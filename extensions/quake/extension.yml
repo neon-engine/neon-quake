@@ -1,0 +1,12 @@
+# The loaders of the original Quake's data and the interpreter of its game
+# code, as a native extension of Neon Engine.
+version: 1
+name: quake
+
+libraries:
+  macos-arm64: quake-macos-arm64.dylib
+  macos-x86_64: quake-macos-x86_64.dylib
+  linux-x86_64: quake-linux-x86_64.so
+  linux-arm64: quake-linux-arm64.so
+  windows-x86_64: quake-windows-x86_64.dll
+  windows-arm64: quake-windows-arm64.dll

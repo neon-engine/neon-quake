@@ -1,0 +1,13 @@
+# Quake on Neon Engine. Everything of the game is in its extension, see
+# extensions/quake; this says what the project is called and where it starts.
+
+version: 1
+name: neon-quake
+organization: neon-engine
+
+scenes:
+  - extensions://quake/assets/scenes/start.scene.yml
+
+entry_scene: extensions://quake/assets/scenes/start.scene.yml
+
+input: assets://input/default.input.yml
