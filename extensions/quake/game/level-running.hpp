@@ -8,6 +8,7 @@
 
 #include "client-think.hpp"
 #include "formats/qc-machine.hpp"
+#include "level-caller.hpp"
 #include "level-failure.hpp"
 #include "level-mover.hpp"
 #include "level-spawning.hpp"
@@ -29,7 +30,7 @@ namespace quake
   ///
   /// A function that is stopped does not end the frame. It is kept as a
   /// `LevelFailure` for the host to read.
-  class LevelRunning final
+  class LevelRunning final : public LevelCaller
   {
     QcMachine &_machine;
     QcGlobals _globals;
@@ -70,6 +71,10 @@ namespace quake
     /// The machine, and the mover when there is one, must outlive this.
     explicit LevelRunning(QcMachine &machine, LevelMover *mover = nullptr);
 
+    /// Gives the level its mover after it was made, for a mover that calls
+    /// the game code through this and so is made after it. Null for none.
+    void SetMover(LevelMover *mover);
+
     /// The time of the level in seconds. A level starts at
     /// `LevelSpawning::start_time`.
     [[nodiscard]] double GetTime() const;
@@ -106,7 +111,7 @@ namespace quake
     /// touch another, or be blocked by one. False, with the failure kept,
     /// when the run was stopped. Nothing is run for function 0, which is no
     /// function.
-    bool RunFunction(std::int32_t function, std::int32_t self, std::int32_t other);
+    bool RunFunction(std::int32_t function, std::int32_t self, std::int32_t other) override;
 
     /// The first failures since the last ClearFailures(), and how many
     /// there were in all.

@@ -5,6 +5,7 @@
 
 #include "formats/qc-machine.hpp"
 #include "level-collision.hpp"
+#include "level-stepping.hpp"
 #include "level-trace-result.hpp"
 #include "qc-fields.hpp"
 #include "qc-globals.hpp"
@@ -12,12 +13,13 @@
 namespace quake
 {
   /// The builtins of the original's engine that ask the level and the
-  /// entities in it: what a line hits, what fills a place, where the floor
-  /// is under an entity, who is near a place, and which player a monster
-  /// may look for. `QcCoreBuiltins` has those that need no world.
+  /// entities in it, and those a monster walks with: what a line hits,
+  /// what fills a place, where the floor is under an entity, who is near a
+  /// place, which player a monster may look for, and a step towards a
+  /// goal. `QcCoreBuiltins` has those that need no world.
   ///
-  /// They are answered by a `LevelCollision`, in the units and axes of the
-  /// game. What a host has the means for alone is not here: `setorigin`,
+  /// They are answered by a `LevelCollision` and a `LevelStepping`, in the
+  /// units and axes of the game. What a host has the means for alone is not here: `setorigin`,
   /// `setsize`, `setmodel`, `makestatic`, `sound`, `ambientsound`, and
   /// `particle`.
   ///
@@ -28,6 +30,7 @@ namespace quake
   class QcWorldBuiltins final
   {
     LevelCollision &_collision;
+    LevelStepping &_stepping;
     QcFields _fields;
     QcGlobals _globals;
     std::int32_t _client_count = 1;
@@ -46,12 +49,17 @@ namespace quake
 
     void CheckClient(QcMachine &machine) const;
 
+    void WalkMove(QcMachine &machine) const;
+
+    void MoveToGoal(QcMachine &machine) const;
+
   public:
     /// How far down `droptofloor` looks for a floor.
     static constexpr float drop_distance = 256.0f;
 
-    /// Takes the collision that answers, which has to outlive this.
-    explicit QcWorldBuiltins(LevelCollision &collision);
+    /// Takes the collision that answers and what monsters walk with. Both
+    /// have to outlive this.
+    QcWorldBuiltins(LevelCollision &collision, LevelStepping &stepping);
 
     // the builtins on the machine point back here
     QcWorldBuiltins(const QcWorldBuiltins &) = delete;
@@ -75,9 +83,19 @@ namespace quake
     ///   a radius of a place, as a list through the field `chain`.
     /// - `checkclient()` gives a player a monster may look for, see
     ///   SetClientCount().
+    /// - `checkbottom(ent)` says whether an entity has a floor under all of
+    ///   it, see LevelStepping::CheckBottom().
+    /// - `walkmove(yaw, dist)` has `self` take a step in a direction, and
+    ///   gives whether it did, see LevelStepping::WalkMove().
+    /// - `movetogoal(dist)` has `self` take a step towards its
+    ///   `goalentity`, see LevelStepping::MoveToGoal().
+    /// - `ChangeYaw()` turns `self` towards its `ideal_yaw`.
     /// - `aim(ent, speed)` gives the global `v_forward`: where the player
     ///   looks. The original bends the shot towards what is nearly in
     ///   line, for players who cannot look up and down. That is left out.
+    ///
+    /// A step may touch a trigger, whose `touch` runs in the middle of the
+    /// builtin. `self` and `other` are afterwards what they were.
     void Register(QcMachine &machine);
 
     /// How many players there may be: the entities 1 to `count`, which the

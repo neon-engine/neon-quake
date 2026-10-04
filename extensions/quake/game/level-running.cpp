@@ -15,6 +15,11 @@ namespace quake
   {
   }
 
+  void LevelRunning::SetMover(LevelMover *mover)
+  {
+    _mover = mover;
+  }
+
   double LevelRunning::GetTime() const
   {
     return _time;

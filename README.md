@@ -57,7 +57,9 @@ moved through the world, through the doors and lifts where they stand, and
 through the boxes of the other entities, with the rules of the original for
 what a move passes. It answers the builtins that ask the level,
 `QcWorldBuiltins`: `traceline`, `pointcontents`, `droptofloor`, `findradius`,
-`checkclient`, and `aim`. Two of them are simpler than the original:
+`checkclient`, and `aim`, and those a monster walks with, `walkmove`,
+`movetogoal`, `checkbottom`, and `ChangeYaw`, whose steps are `LevelStepping`.
+Two of them are simpler than the original:
 `checkclient` does not ask whether the player can be seen from where the
 monster stands, and `aim` does not bend a shot towards a target. The builtins
 that place, size, and show an entity, and those that make a sound, are a
@@ -71,7 +73,12 @@ it out. Time passes with `LevelRunning`, a step at a time: the game code
 starts the frame, every entity thinks when its time has come, and what
 pushes, a door or a lift, moves by a clock of its own. What takes the walls
 of a level, falling and walking and what a door runs into, is asked of a
-`LevelMover`, which a host with collisions brings. `QcGlobals` and `QcFields`
+`LevelMover`. `LevelPhysics` is the one for a level with its collision: what
+is tossed falls and lands, a missile flies until it hits, a monster without a
+floor drops, and a lift carries what stands on it and stops for what has
+nowhere to go, each as the original moves it. Entities that meet are told
+through `LevelTouching`. The player is not moved there: a host moves the
+player with the character of its engine. `QcGlobals` and `QcFields`
 are the globals and fields the two work with, found by name once, for a host
 to read and write as well: `fields.origin.Get(machine, entity)`.
 

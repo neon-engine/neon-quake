@@ -11,8 +11,9 @@
 
 namespace quake
 {
-  QcWorldBuiltins::QcWorldBuiltins(LevelCollision &collision)
+  QcWorldBuiltins::QcWorldBuiltins(LevelCollision &collision, LevelStepping &stepping)
     : _collision(collision),
+      _stepping(stepping),
       _fields(collision.GetMachine().GetProgs()),
       _globals(collision.GetMachine().GetProgs())
   {
@@ -44,6 +45,13 @@ namespace quake
     set(Number::DropToFloor, [this](QcMachine &m) { DropToFloor(m); });
     set(Number::FindRadius, [this](QcMachine &m) { FindRadius(m); });
     set(Number::CheckClient, [this](QcMachine &m) { CheckClient(m); });
+    set(Number::CheckBottom, [this](QcMachine &m)
+    {
+      m.SetReturnFloat(_stepping.CheckBottom(m.GetParameterInteger(0)) ? 1.0f : 0.0f);
+    });
+    set(Number::WalkMove, [this](QcMachine &m) { WalkMove(m); });
+    set(Number::MoveToGoal, [this](QcMachine &m) { MoveToGoal(m); });
+    set(Number::ChangeYaw, [this](QcMachine &m) { _stepping.ChangeYaw(_globals.self.Get(m)); });
     set(Number::Aim, [this](QcMachine &m) { m.SetReturnVector(_globals.v_forward.Get(m)); });
   }
 
@@ -115,6 +123,26 @@ namespace quake
       chain = entity;
     }
     machine.SetReturnInteger(chain);
+  }
+
+  void QcWorldBuiltins::WalkMove(QcMachine &machine) const
+  {
+    // read before the step: a trigger touched on the way runs game code,
+    // which takes the places of the parameters
+    const std::int32_t self = _globals.self.Get(machine);
+    const float yaw = machine.GetParameterFloat(0);
+    const float distance = machine.GetParameterFloat(1);
+
+    const bool stepped = _stepping.WalkMove(self, yaw, distance);
+    machine.SetReturnFloat(stepped ? 1.0f : 0.0f);
+  }
+
+  void QcWorldBuiltins::MoveToGoal(QcMachine &machine) const
+  {
+    const std::int32_t self = _globals.self.Get(machine);
+    const float distance = machine.GetParameterFloat(0);
+
+    _stepping.MoveToGoal(self, distance);
   }
 
   void QcWorldBuiltins::CheckClient(QcMachine &machine) const

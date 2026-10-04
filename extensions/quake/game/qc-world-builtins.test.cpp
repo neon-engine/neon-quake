@@ -9,64 +9,34 @@
 #include <gtest/gtest.h>
 
 #include "formats/bsp-contents.hpp"
-#include "formats/bsp-hull.hpp"
-#include "level-world.test.hpp"
+#include "level-moving.test.hpp"
 #include "qc-flag.hpp"
 
 namespace
 {
   using quake::BspContents;
-  using quake::BspHull;
   using quake::HasFlag;
-  using quake::LevelCollision;
-  using quake::LevelProgram;
   using quake::LevelVector;
   using quake::LevelWorld;
-  using quake::QcFields;
   using quake::QcFlag;
-  using quake::QcGlobals;
   using quake::QcMachine;
   using quake::QcSolid;
   using quake::QcWorldBuiltins;
   using ::testing::ElementsAre;
 
-  constexpr float epsilon = BspHull::distance_epsilon;
-  constexpr float tolerance = 1.0e-3f;
-
   /// The builtins on the level of `LevelWorld`, called as game code calls
   /// them: the parameters put in place, then the function of the name.
-  class QcWorldBuiltinsTest : public ::testing::Test
+  class QcWorldBuiltinsTest : public quake::LevelMovingTest
   {
   protected:
-    static constexpr LevelVector crate_mins = {-16.0f, -16.0f, 0.0f};
-    static constexpr LevelVector crate_maxs = {16.0f, 16.0f, 56.0f};
-
-    LevelProgram _program;
-    std::unique_ptr<QcMachine> _machine;
-    std::unique_ptr<QcFields> _fields;
-    std::unique_ptr<QcGlobals> _globals;
-    std::unique_ptr<LevelCollision> _collision;
     std::unique_ptr<QcWorldBuiltins> _builtins;
 
     void SetUp() override
     {
-      LevelWorld::AddTo(_program);
-      _machine = std::make_unique<QcMachine>(_program.Make());
-      _fields = std::make_unique<QcFields>(_machine->GetProgs());
-      _globals = std::make_unique<QcGlobals>(_machine->GetProgs());
-      _collision = std::make_unique<LevelCollision>(*_machine);
-
-      std::string error;
-      ASSERT_TRUE(_collision->Build(LevelWorld::MakeLevel(), error)) << error;
-      _builtins = std::make_unique<QcWorldBuiltins>(*_collision);
+      LevelMovingTest::SetUp();
+      ASSERT_FALSE(HasFatalFailure());
+      _builtins = std::make_unique<QcWorldBuiltins>(*_collision, *_stepping);
       _builtins->Register(*_machine);
-    }
-
-    std::int32_t Make(
-      const LevelVector &origin, const LevelVector &mins = crate_mins, const LevelVector &maxs = crate_maxs,
-      const QcSolid solid = QcSolid::BoundingBox)
-    {
-      return LevelWorld::MakeEntity(*_machine, origin, mins, maxs, solid);
     }
 
     void TraceLine(const LevelVector &start, const LevelVector &end, const float no_monsters, const std::int32_t pass)
@@ -283,5 +253,71 @@ namespace
     _machine->SetParameterFloat(1, 1000.0f);
     ASSERT_TRUE(_machine->Call("aim"));
     EXPECT_THAT(_machine->GetReturnVector(), ElementsAre(0.6f, 0.0f, 0.8f));
+  }
+
+  TEST_F(QcWorldBuiltinsTest, HasAMonsterTakeAStepAndSayWhetherItDid)
+  {
+    const std::int32_t monster = MakeMonster(80.0f, 0.0f);
+    const auto walk = [&](const float yaw, const float distance)
+    {
+      _globals->self.Set(*_machine, monster);
+      _machine->SetParameterFloat(0, yaw);
+      _machine->SetParameterFloat(1, distance);
+      EXPECT_TRUE(_machine->Call("walkmove")) << _machine->GetError().message;
+      return _machine->GetReturnFloat();
+    };
+
+    // up the step, and not up the ledge
+    EXPECT_EQ(walk(0.0f, 30.0f), 1.0f);
+    EXPECT_THAT(OriginOf(monster), ElementsAre(110.0f, 0.0f, ::testing::FloatNear(40.0f + epsilon, tolerance)));
+    EXPECT_EQ(walk(0.0f, 80.0f), 0.0f);
+    EXPECT_EQ(OriginOf(monster)[0], 110.0f);
+
+    // A trigger on the way is touched in the middle of the builtin, and
+    // what the builtin gives is still the builtin's.
+    const std::int32_t trigger = Make({150.0f, 0.0f, 16.0f}, crate_mins, crate_maxs, QcSolid::Trigger);
+    _fields->touch.Set(*_machine, trigger, FunctionOf("touch"));
+    _machine->SetBuiltin(_touch, [this](QcMachine &machine)
+    {
+      _touches.push_back({_globals->self.Get(machine), _globals->other.Get(machine), 0.0f});
+      machine.SetReturnFloat(0.0f);
+    });
+    EXPECT_EQ(walk(0.0f, 20.0f), 1.0f);
+    EXPECT_THAT(_touches, ElementsAre(Call{trigger, monster, 0.0f}));
+    EXPECT_EQ(_globals->self.Get(*_machine), monster);
+  }
+
+  TEST_F(QcWorldBuiltinsTest, SaysWhetherAnEntityHasAFloorUnderAllOfIt)
+  {
+    const std::int32_t monster = MakeMonster(0.0f, 0.0f);
+    const auto check_bottom = [&]
+    {
+      _machine->SetParameterInteger(0, monster);
+      EXPECT_TRUE(_machine->Call("checkbottom")) << _machine->GetError().message;
+      return _machine->GetReturnFloat();
+    };
+
+    EXPECT_EQ(check_bottom(), 1.0f);
+    _fields->origin.Set(*_machine, monster, {-90.0f, 0.0f, 24.0f + epsilon});
+    EXPECT_EQ(check_bottom(), 0.0f);
+  }
+
+  TEST_F(QcWorldBuiltinsTest, HasAMonsterTurnAndWalkTowardsItsGoal)
+  {
+    const std::int32_t monster = MakeMonster(0.0f, 0.0f);
+    const std::int32_t goal = Make({0.0f, 200.0f, 0.0f}, {}, {}, QcSolid::Not);
+    _fields->goalentity.Set(*_machine, monster, goal);
+    _fields->ideal_yaw.Set(*_machine, monster, 90.0f);
+    _fields->yaw_speed.Set(*_machine, monster, 30.0f);
+    _globals->self.Set(*_machine, monster);
+
+    ASSERT_TRUE(_machine->Call("ChangeYaw")) << _machine->GetError().message;
+    EXPECT_NEAR(_fields->angles.Get(*_machine, monster)[1], 30.0f, 0.01f);
+    EXPECT_EQ(OriginOf(monster)[1], 0.0f);
+
+    _machine->SetParameterFloat(0, 10.0f);
+    ASSERT_TRUE(_machine->Call("movetogoal")) << _machine->GetError().message;
+    EXPECT_NEAR(_fields->angles.Get(*_machine, monster)[1], 60.0f, 0.01f);
+    EXPECT_NEAR(OriginOf(monster)[1], 10.0f, tolerance);
   }
 }
