@@ -1,6 +1,7 @@
 #ifndef QUAKE_LEVEL_VIEW_HPP
 #define QUAKE_LEVEL_VIEW_HPP
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <map>
@@ -12,7 +13,9 @@
 #include <neon/extension/neon-extension.hpp>
 
 #include "formats/bsp-file.hpp"
+#include "formats/bsp-light-point.hpp"
 #include "formats/entity-text.hpp"
+#include "formats/lit-file.hpp"
 #include "game-data.hpp"
 
 namespace quake
@@ -35,6 +38,14 @@ namespace quake
   /// are.
   class LevelView
   {
+    // The colours of the light of the level that is shown, when the data
+    // has them, `maps/<level>.lit` next to the level; and the light of the
+    // level at a place, for what stands in it.
+    LitFile _lit;
+    bool _has_lit = false;
+    BspLightPoint _light;
+    bool _has_light = false;
+
     // the entity everything of the level that is shown stands under
     neon::extension::Entity _root = 0;
 
@@ -115,6 +126,13 @@ namespace quake
       const GameData &data,
       const std::string &map,
       std::string &error);
+
+    /// How bright a model is that stands at a place of the level, in the
+    /// space of the game: what its colours are multiplied by, red, green,
+    /// and blue. A model is lit by the floor under it, as in the original,
+    /// and takes the colour of its light. `least` is the least light it
+    /// has, of 255: what the player holds is never all dark.
+    [[nodiscard]] std::array<float, 3> FindLight(const BspVector &place, float least = 0.0f) const;
 
     /// Takes the level that is shown out of the world, with everything
     /// under it. Show() does so itself before it shows another.

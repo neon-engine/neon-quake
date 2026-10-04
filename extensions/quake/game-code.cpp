@@ -386,7 +386,12 @@ namespace quake
     {
       const auto frame = static_cast<std::int32_t>(fields.frame.Get(machine, entity));
       const auto skin = static_cast<std::int32_t>(fields.skin.Get(machine, entity));
-      if (!_models->Show(*_world, *_data, shown.entity, shown.model, frame, skin))
+      // lit by the floor it is over; a flame is its own light
+      const Vector at = fields.origin.Get(machine, entity);
+      const std::array<float, 3> light = shown.model.find("flame") != std::string::npos
+                                           ? std::array<float, 3>{1.0f, 1.0f, 1.0f}
+                                           : _view->FindLight({at[0], at[1], at[2]});
+      if (!_models->Show(*_world, *_data, shown.entity, shown.model, frame, skin, light))
       {
         Hide(shown);
         // kept by its name, so that it is not tried again in every step
@@ -778,7 +783,10 @@ namespace quake
     if (is_new) { _weapon = _world->CreateEntity("weapon", _camera); }
 
     const auto frame = static_cast<std::int32_t>(fields.weaponframe.Get(machine, player_entity));
-    if (!_models->Show(*_world, *_data, _weapon, model, frame, 0)) { return; }
+    // lit by the floor the player stands on, and never all dark
+    const Vector at = fields.origin.Get(machine, player_entity);
+    const std::array<float, 3> light = _view->FindLight({at[0], at[1], at[2]}, least_weapon_light);
+    if (!_models->Show(*_world, *_data, _weapon, model, frame, 0, light)) { return; }
 
     // The weapon is seen from the eyes. A model looks along x, and the
     // camera along the negative z, a quarter turn from it.

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <utility>
@@ -28,6 +29,9 @@ namespace quake
     // ports of today show the game with more contrast than the original,
     // 1.4 times on the screen in vkQuake, which is 2.1 times as much light.
     constexpr double light_strength = 4.59 * 2.1;
+
+    // the same contrast for the light of a model
+    constexpr float model_contrast = 2.1f;
 
     // How far the middle of the body of a player is above where the level
     // puts it. A level names the place of a box that reaches 24 units down
@@ -198,7 +202,9 @@ namespace quake
     std::vector<std::string> lightmaps;
     if (!level.lighting.empty())
     {
-      if (std::string problem; !atlas.Build(mesh, problem))
+      // an item is lit without colours: the data has none for the small levels
+      const LitFile *lit = !is_item && _has_lit ? &_lit : nullptr;
+      if (std::string problem; !atlas.Build(mesh, problem, LightmapAtlas::default_largest_side, lit))
       {
         world.Warn("The light of model " + std::to_string(model) + " of " + file_name + " cannot be packed: " + problem);
       } else
@@ -352,6 +358,28 @@ namespace quake
     _parts.clear();
     _has_start = false;
     _player_placed = false;
+    _has_lit = false;
+    _has_light = false;
+  }
+
+  std::array<float, 3> LevelView::FindLight(const BspVector &place, const float least) const
+  {
+    if (!_has_light) { return {1.0f, 1.0f, 1.0f}; }
+
+    const BspLightSample sample = _light.Sample(place, {}, BspLightFilter::Bilinear);
+
+    // The original shows a model with its colours times its light over 200,
+    // counted as a screen is given them. The engine multiplies light itself,
+    // so the factor is taken to the power of 2.2, and the level is shown
+    // with more contrast, as its walls are.
+    std::array<float, 3> light{};
+    const float samples[3] = {sample.red, sample.green, sample.blue};
+    for (std::size_t i = 0; i < 3; i++)
+    {
+      const float on_screen = std::clamp(std::max(samples[i], least), 0.0f, 255.0f) / 200.0f;
+      light[i] = std::pow(on_screen, 2.2f) * model_contrast;
+    }
+    return light;
   }
 
   Entity LevelView::FindPart(const std::size_t model) const
@@ -410,6 +438,25 @@ namespace quake
     }
 
     Clear(world);
+
+    // The colours of the light, when the level comes with them. Without, or
+    // with colours that are not of this level, the light is white.
+    std::string lit_name = map;
+    if (lit_name.ends_with(".bsp")) { lit_name.replace(lit_name.size() - 4, 4, ".lit"); }
+    if (const std::span<const std::uint8_t> colours = data.Find(lit_name); !colours.empty())
+    {
+      std::string problem;
+      _has_lit = _lit.Read(colours, level.lighting.size(), problem);
+      if (!_has_lit) { world.Warn("The colours of the light of " + map + " are left out: " + problem); }
+    }
+
+    if (std::string problem; !_light.Build(level, problem, _has_lit ? std::span<const std::uint8_t>(_lit.GetColours()) : std::span<const std::uint8_t>()))
+    {
+      world.Warn("Models in " + map + " are shown as bright as their skins: " + problem);
+    } else
+    {
+      _has_light = true;
+    }
 
     const Entity root = world.CreateEntity("level");
     world.AddComponent(root, "Transform");

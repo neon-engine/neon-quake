@@ -1,6 +1,7 @@
 #ifndef QUAKE_MODEL_VIEW_HPP
 #define QUAKE_MODEL_VIEW_HPP
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <map>
@@ -68,7 +69,7 @@ namespace quake
       std::size_t frame = 0;
       std::size_t pose = 0;
       std::size_t skin = 0;
-      float light = 1.0f;
+      std::array<float, 3> light{1.0f, 1.0f, 1.0f};
 
       /// The corners the entity showed when it was last told another pose,
       /// and when that was: for a tenth of a second it shows what lies
@@ -118,7 +119,7 @@ namespace quake
     /// Has an entity show a frame of a model by its name, such as
     /// `progs/player.mdl`, with one of its skins. The entity is given what
     /// draws it the first time. A frame or skin the model does not have
-    /// shows the first one, as the original does. `light` is how bright the
+    /// shows the first one, as the original does. `light` is what its colours are multiplied by, red, green, and blue: how bright the
     /// model is where it stands, 1 for as its skin is.
     ///
     /// Returns false, and shows nothing new, when there is no such model.
@@ -129,7 +130,7 @@ namespace quake
       const std::string &name,
       std::int32_t frame,
       std::int32_t skin,
-      float light = 1.0f,
+      const std::array<float, 3> &light = {1.0f, 1.0f, 1.0f},
       bool blend = true);
 
     /// The effects the model an entity shows was made with, a bit for each,

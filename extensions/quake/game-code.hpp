@@ -249,6 +249,10 @@ namespace quake
     static constexpr float eye_rise_speed = 80.0f;
     static constexpr float most_eye_lag = 12.0f;
 
+    /// The least light the weapon in the player's hands has, of 255, as in
+    /// the original.
+    static constexpr float least_weapon_light = 24.0f;
+
     /// How many steps of the world a stride of a monster is shown over. The
     /// game code moves a monster every tenth of a second.
     static constexpr double stride_time = 0.1;

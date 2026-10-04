@@ -127,7 +127,7 @@ namespace quake
       }
     }
 
-    for (Vertex &corner : corners) { corner.color = {shown.light, shown.light, shown.light, 1.0f}; }
+    for (Vertex &corner : corners) { corner.color = {shown.light[0], shown.light[1], shown.light[2], 1.0f}; }
     return corners;
   }
 
@@ -146,7 +146,7 @@ namespace quake
     const std::string &name,
     const std::int32_t frame,
     const std::int32_t skin,
-    const float light,
+    const std::array<float, 3> &light,
     const bool blend)
   {
     Model *model = Find(world, data, name);
