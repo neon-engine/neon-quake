@@ -11,9 +11,15 @@ entities:
       Transform:
         position: [0, 2, 8]
     children:
-      # turned up and down by the game
+      # Turned up and down by the game. The game sees 90 degrees across a
+      # screen of 4 by 3, which is 73.74 from top to bottom, and its levels
+      # and the weapons in the player's hands are made for that: seen
+      # narrower, a weapon is below the screen. What is nearer than a unit
+      # of the game and a half is not drawn.
       - name: camera
         components:
           Transform: Default
-          Camera: Default
+          Camera:
+            fov: 73.74
+            near: 0.05
           SoundListener: Default
