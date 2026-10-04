@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <numbers>
 #include <cstdlib>
 #include <set>
 #include <span>
@@ -49,6 +50,16 @@ namespace quake
     constexpr float explosion_light = 350.0f;
     constexpr float explosion_light_seconds = 0.5f;
     constexpr float explosion_light_decay = 300.0f;
+
+    /// From top to bottom, how much the camera of the game sees, in degrees:
+    /// what the scene gives it, which is the original's 90 from side to side
+    /// on a screen of four by three.
+    constexpr float view_field = 73.74f;
+
+    /// How much wider and narrower the view gets in a liquid, as a part of
+    /// its width, and how fast, in turns of a radian in a second.
+    constexpr float under_water_sway = 0.03f;
+    constexpr float under_water_pace = 1.5f;
 
     /// How long a light lasts that its entity lights anew in every step.
     constexpr float carried_light_seconds = 0.05f;
@@ -1089,7 +1100,25 @@ namespace quake
     // carries, and the flashes, which fade.
     Vector eyes;
     FindEyes(eyes);
-    _tint.SetContents(_level->collision.GetPointContents({eyes[0], eyes[1], eyes[2]}));
+    const BspContents around = _level->collision.GetPointContents({eyes[0], eyes[1], eyes[2]});
+    _tint.SetContents(around);
+
+    // Under water, in slime, and in lava the view sways: it is a little
+    // wider and narrower in turn, as the first ports for graphics cards had
+    // it. The ports of today wave the picture itself, which takes a pass
+    // over the frame that the engine does not let a game add yet.
+    float field = view_field;
+    if (around == BspContents::Water || around == BspContents::Slime || around == BspContents::Lava)
+    {
+      const float half = std::tan(view_field * 0.5f * std::numbers::pi_v<float> / 180.0f);
+      const float swayed = half * (1.0f + under_water_sway * std::sin(time * under_water_pace));
+      field = 2.0f * std::atan(swayed) * 180.0f / std::numbers::pi_v<float>;
+    }
+    if (field != _shown_field)
+    {
+      _shown_field = field;
+      _world->SetNumber(_camera, _world->FindField("Camera", "fov"), field);
+    }
     _tint.SetItems(stats.items);
     _tint.Advance(_frame_time);
     if (_menu.IsOpen())

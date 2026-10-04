@@ -276,6 +276,9 @@ namespace quake
     // what draws the particles of the level
     ParticleView _particle_view;
 
+    // how much the camera sees from top to bottom as it was last told
+    float _shown_field = 0.0f;
+
     // the lights of explosions, of shots, and of what glows as it flies
     LightView _lights;
 
