@@ -160,6 +160,9 @@ namespace
     EXPECT_FALSE(machine.IsEntityFree(2));
     EXPECT_EQ(machine.GetEntityCount(), 3);
 
+    // a free entity keeps what it held, for game code that still reads it
+    EXPECT_EQ(machine.GetEntity(1)[health].AsFloat(), 100.0f);
+
     EXPECT_EQ(machine.CreateEntity(), 1);
     EXPECT_FALSE(machine.IsEntityFree(1));
     EXPECT_EQ(machine.GetEntity(1)[health].AsFloat(), 0.0f);
@@ -669,6 +672,11 @@ namespace
 
     ASSERT_TRUE(machine.Call("main")) << machine.GetError().message;
     EXPECT_EQ(machine.GetFloat(got), 100.0f);
+
+    // what the program wrote after the entity was freed is not what the
+    // next entity of that number starts with
+    ASSERT_EQ(machine.CreateEntity(), 1);
+    EXPECT_EQ(machine.GetEntity(1)[health].AsFloat(), 0.0f);
   }
 
   TEST(QcMachineTest, SetsTheFrameAndTheNextThinkOfSelfWithState)
@@ -1158,6 +1166,24 @@ namespace
     const QcMachine machine = ExpectStopped(builder, "ran more than 1000 statements", 1, limits);
 
     EXPECT_EQ(machine.GetFloat(count), 500.0f);
+  }
+
+  TEST(QcMachineTest, CountsTheStatementsItRanInEveryRun)
+  {
+    ProgsBuilder builder;
+    const std::uint16_t one = builder.Float(1.0f);
+    const std::uint16_t count = builder.Float();
+    builder.Emit(ProgsOpcode::AddF, count, one, count);
+    builder.Emit(ProgsOpcode::AddF, count, one, count);
+    EndMain(builder);
+    QcMachine machine = MakeMachine(builder);
+    EXPECT_EQ(machine.GetStatementsRun(), 0);
+
+    // two additions and the end of the function, each time
+    EXPECT_TRUE(machine.Call("main"));
+    EXPECT_EQ(machine.GetStatementsRun(), 3);
+    EXPECT_TRUE(machine.Call("main"));
+    EXPECT_EQ(machine.GetStatementsRun(), 6);
   }
 
   TEST(QcMachineTest, StopsAFunctionThatCallsItselfForEver)

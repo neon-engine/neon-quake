@@ -348,6 +348,11 @@ namespace quake
     return _error;
   }
 
+  std::int64_t QcMachine::GetStatementsRun() const
+  {
+    return _statements_run;
+  }
+
   bool QcMachine::Begin()
   {
     if (_runs > 0) { return !_failed; }
@@ -684,6 +689,8 @@ namespace quake
         return Fail(std::format(
           "The program ran more than {} statements and is taken to be stuck in a loop", _limits.statements));
       }
+
+      _statements_run++;
 
       const ProgsStatement &statement = _progs.statements[static_cast<std::size_t>(next)];
       OperandSizes sizes;
@@ -1067,7 +1074,10 @@ namespace quake
     {
       if (_entity_free[i] != 0)
       {
+        // cleared now and not when it was freed: the program may have read
+        // and written it since
         _entity_free[i] = 0;
+        std::ranges::fill(GetEntity(static_cast<std::int32_t>(i)), QcCell{});
         return static_cast<std::int32_t>(i);
       }
     }
@@ -1083,7 +1093,6 @@ namespace quake
   {
     if (entity <= 0 || entity >= GetEntityCount()) { return false; }
 
-    std::ranges::fill(GetEntity(entity), QcCell{});
     _entity_free[static_cast<std::size_t>(entity)] = 1;
     return true;
   }

@@ -101,6 +101,9 @@ namespace quake
     /// The statement that is running, for the error.
     std::int32_t _statement = -1;
 
+    /// How many statements were run since the machine was made.
+    std::int64_t _statements_run = 0;
+
     [[nodiscard]] bool HasGlobals(std::int32_t offset, std::int32_t count) const;
 
     /// Makes ready for a Call(): one from outside starts without the error
@@ -174,6 +177,10 @@ namespace quake
 
     /// Why the last run was stopped, and where.
     [[nodiscard]] const QcError &GetError() const;
+
+    /// How many statements the machine has run since it was made, in every
+    /// run, for the host to tell how much work a call was.
+    [[nodiscard]] std::int64_t GetStatementsRun() const;
 
     /// Stops the run that is under way with an error of the host's, for a
     /// builtin that is called with what it cannot work with. The first
@@ -277,9 +284,12 @@ namespace quake
     /// reached.
     std::optional<std::int32_t> CreateEntity();
 
-    /// Frees an entity and sets its fields to zero. The world is never
-    /// freed. The program may still read and write a free entity, as in the
-    /// original; its number is given out again by CreateEntity().
+    /// Frees an entity. The world is never freed. Its fields stay as they
+    /// are, and the program may still read and write them, as in the
+    /// original: game code goes on with an entity it removed a moment ago,
+    /// and walks lists that lead through one. They are set to zero when
+    /// CreateEntity() gives its number out again. The few fields the
+    /// original resets when it frees an entity are for the host to reset.
     bool FreeEntity(std::int32_t entity);
 
     /// Whether an entity is free. An entity that there is not is free too.
