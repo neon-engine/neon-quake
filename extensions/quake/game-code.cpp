@@ -160,8 +160,12 @@ namespace quake
     if (const std::size_t part = read_part_number(name); part > 0 && part < _level->file.models.size())
     {
       const BspModel &model = _level->file.models[part];
-      mins = {model.mins.x, model.mins.y, model.mins.z};
-      maxs = {model.maxs.x, model.maxs.y, model.maxs.z};
+      // The original makes the box of a model of a level one unit larger
+      // each way than its file says. The game code counts on it: two leaves
+      // of a door that stand side by side touch, so they open as one, and
+      // the key that opens one is spent once.
+      mins = {model.mins.x - 1.0f, model.mins.y - 1.0f, model.mins.z - 1.0f};
+      maxs = {model.maxs.x + 1.0f, model.maxs.y + 1.0f, model.maxs.z + 1.0f};
     }
     fields.mins.Set(machine, entity, mins);
     fields.maxs.Set(machine, entity, maxs);
