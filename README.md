@@ -50,8 +50,18 @@ the text, the entities of the machine, the console variables, the models and
 sounds the game code names, the styles of the lights. What they leave behind
 is kept for the host to read, and what the host has to act on, a line of
 text, an entity that went, a change of level, reaches it through the
-interface `QcHost`. The builtins that need a level to collide with, or
-something to draw or to hear, are not there yet.
+interface `QcHost`.
+
+What the entities of the game code collide with is `LevelCollision`: a box
+moved through the world, through the doors and lifts where they stand, and
+through the boxes of the other entities, with the rules of the original for
+what a move passes. It answers the builtins that ask the level,
+`QcWorldBuiltins`: `traceline`, `pointcontents`, `droptofloor`, `findradius`,
+`checkclient`, and `aim`. Two of them are simpler than the original:
+`checkclient` does not ask whether the player can be seen from where the
+monster stands, and `aim` does not bend a shot towards a target. The builtins
+that place, size, and show an entity, and those that make a sound, are a
+host's own.
 
 It also has what the engine of the original did around the game code. A
 level starts with `LevelSpawning`: each entity of the level's text gets an

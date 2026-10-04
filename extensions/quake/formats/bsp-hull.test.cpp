@@ -520,4 +520,37 @@ namespace
     (void)hull.GetPointContents({no_number, no_number, no_number});
     SUCCEED();
   }
+
+  TEST(BspHullTest, MakesABoxThatIsSolidInsideAndStopsAMoveAtItsSides)
+  {
+    BspHull hull;
+    hull.BuildBox({-16.0f, -8.0f, 0.0f}, {16.0f, 8.0f, 32.0f});
+    EXPECT_EQ(hull.GetNodes().size(), 6u);
+    EXPECT_EQ(hull.GetPointContents({0.0f, 0.0f, 16.0f}), BspContents::Solid);
+    EXPECT_EQ(hull.GetPointContents({0.0f, 9.0f, 16.0f}), BspContents::Empty);
+    EXPECT_EQ(hull.GetPointContents({0.0f, 0.0f, -1.0f}), BspContents::Empty);
+
+    // from the side, and from above
+    BspTraceResult result = hull.TraceLine({-100.0f, 0.0f, 16.0f}, {100.0f, 0.0f, 16.0f});
+    EXPECT_NEAR(result.end_position.x, -16.0f - epsilon, 1.0e-3f);
+    ExpectPlace(result.plane_normal, -1.0f, 0.0f, 0.0f);
+    EXPECT_EQ(result.plane_distance, 16.0f);
+    EXPECT_TRUE(result.in_open);
+    EXPECT_FALSE(result.start_solid);
+
+    result = hull.TraceLine({0.0f, 0.0f, 100.0f}, {0.0f, 0.0f, 16.0f});
+    EXPECT_NEAR(result.end_position.z, 32.0f + epsilon, 1.0e-3f);
+    ExpectPlace(result.plane_normal, 0.0f, 0.0f, 1.0f);
+
+    // past it, and from inside it
+    EXPECT_EQ(hull.TraceLine({-100.0f, 9.0f, 16.0f}, {100.0f, 9.0f, 16.0f}).fraction, 1.0f);
+    result = hull.TraceLine({0.0f, 0.0f, 16.0f}, {0.0f, 0.0f, 20.0f});
+    EXPECT_TRUE(result.start_solid);
+    EXPECT_TRUE(result.all_solid);
+
+    // made anew, it is the new box alone
+    hull.BuildBox({0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f});
+    EXPECT_EQ(hull.GetNodes().size(), 6u);
+    EXPECT_EQ(hull.GetPointContents({0.0f, 0.0f, 16.0f}), BspContents::Empty);
+  }
 }

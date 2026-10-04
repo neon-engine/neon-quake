@@ -355,6 +355,30 @@ namespace quake
     return true;
   }
 
+  void BspHull::BuildBox(const BspVector &mins, const BspVector &maxs)
+  {
+    // Six forks, one after another, as the original has them: the far side
+    // of an axis, then its near side. What is outside a plane is empty, and
+    // what is inside all six is solid.
+    const std::array<float, 6> distances = {maxs.x, mins.x, maxs.y, mins.y, maxs.z, mins.z};
+    _nodes.assign(distances.size(), {});
+    for (std::size_t i = 0; i < distances.size(); i++)
+    {
+      BspHullNode &node = _nodes[i];
+      const std::size_t axis = i / 2;
+      node.normal = {axis == 0 ? 1.0f : 0.0f, axis == 1 ? 1.0f : 0.0f, axis == 2 ? 1.0f : 0.0f};
+      node.distance = distances[i];
+
+      // in front of a far side and behind a near side is outside
+      const std::size_t outside = i % 2;
+      node.children[outside] = empty;
+      node.children[outside ^ 1] = i + 1 < distances.size() ? static_cast<std::int32_t>(i + 1) : solid;
+    }
+    _head = 0;
+    _mins = {};
+    _maxs = {};
+  }
+
   BspContents BspHull::GetPointContents(const BspVector &point) const
   {
     return static_cast<BspContents>(contents_at(_nodes, _head, point));

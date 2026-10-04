@@ -75,6 +75,13 @@ namespace quake
     /// the tree is too deep.
     bool Build(const BspFile &file, std::size_t model, std::size_t hull, std::string &error);
 
+    /// Makes the hull a box with sides along the axes: solid inside, empty
+    /// around it. The original game collides with an entity that is no part
+    /// of the level this way, as six planes, so that a move is stopped by
+    /// the box of an entity exactly as it is by a wall. The box the level
+    /// was grown by is zero: whoever asks grows the box itself.
+    void BuildBox(const BspVector &mins, const BspVector &maxs);
+
     /// The forks, in an order of their own: a child is a place in here.
     [[nodiscard]] std::span<const BspHullNode> GetNodes() const
     {
