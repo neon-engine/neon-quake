@@ -30,6 +30,8 @@
 #include "game/qc-globals.hpp"
 #include "game/qc-host.hpp"
 #include "game/qc-world-builtins.hpp"
+#include "game/server-message-listener.hpp"
+#include "game/server-message-reader.hpp"
 #include "game/status-bar.hpp"
 #include "level-view.hpp"
 #include "model-view.hpp"
@@ -59,7 +61,7 @@ namespace quake
   /// That is what gives the game its pace. The engine is left the eyes: a
   /// camera that is put where the player looks from, in every frame that
   /// is drawn.
-  class GameCode final : public QcHost
+  class GameCode final : public QcHost, public ServerMessageListener
   {
     using Vector = std::array<float, 3>;
 
@@ -146,6 +148,19 @@ namespace quake
     std::vector<Message> _messages;
     std::string _center_text;
     double _center_at = 0.0;
+
+    // puts what the game code writes for the player together into messages
+    ServerMessageReader _reader{*this};
+
+    // The text the game code shows at the end of an episode, letter after
+    // letter, when it started, and whether the picture of an end stands
+    // over it. Empty for none.
+    std::string _finale_text;
+    double _finale_at = 0.0;
+    bool _finale_has_picture = false;
+
+    // whether the game code said that the level is over
+    bool _is_over = false;
 
     // the time of the level at which it was over, while its counts are shown
     float _completed_time = -1.0f;
@@ -342,6 +357,9 @@ namespace quake
     /// Keeps where the eyes are after a step, and where they were before.
     void NoteEyes();
 
+    /// Plays a sound of the game at a place of the game, as loud as it is.
+    void PlaySoundAt(const std::string &name, const Vector &place);
+
     /// Shows what is on top of the world for the player: the status bar,
     /// the lines the game code printed, the words in the middle of the
     /// screen, or the counts of a level that is over.
@@ -389,6 +407,26 @@ namespace quake
     void EntityRemoved(std::int32_t entity) override;
 
     void ChangeLevel(std::string_view level) override;
+
+    void WriteMessage(QcMessageDestination destination, std::int32_t client, const QcMessageValue &value) override;
+
+    // ServerMessageListener: what the game code tells the side of the
+    // player, which is here too
+    void PointEffect(const ServerMessageTarget &target, const TempEntityPoint &effect) override;
+
+    void ColoredExplosion(const ServerMessageTarget &target, const TempEntityExplosion &explosion) override;
+
+    void IntermissionStarted(const ServerMessageTarget &target) override;
+
+    void FinaleStarted(const ServerMessageTarget &target, std::string_view text) override;
+
+    void CutsceneStarted(const ServerMessageTarget &target, std::string_view text) override;
+
+    void MusicTrackSet(const ServerMessageTarget &target, std::int32_t track, std::int32_t loop_track) override;
+
+    void CenterTextPrinted(const ServerMessageTarget &target, std::string_view text) override;
+
+    void TextPrinted(const ServerMessageTarget &target, std::string_view text) override;
 
     void ServerCommand(std::string_view text) override;
 

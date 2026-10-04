@@ -324,6 +324,112 @@ namespace quake
     _server_flags = _level->globals.serverflags.Get(_level->machine);
   }
 
+  void GameCode::WriteMessage(
+    const QcMessageDestination destination, const std::int32_t client, const QcMessageValue &value)
+  {
+    _reader.Read(destination, client, value);
+  }
+
+  void GameCode::PlaySoundAt(const std::string &name, const Vector &place)
+  {
+    const BspVector at = QuakeSpace::ToEnginePosition({place[0], place[1], place[2]});
+    _sounds->Play(*_world, *_data, 0, 0, name, {at.x, at.y, at.z}, 1.0f, 1.0f);
+  }
+
+  void GameCode::PointEffect(const ServerMessageTarget &target, const TempEntityPoint &effect)
+  {
+    ParticleSystem &particles = _level->particles;
+    const Vector &place = effect.position;
+    const LevelVector still{0.0f, 0.0f, 0.0f};
+
+    // what a nail sounds like on a wall: mostly a tink, now and then one of
+    // three ricochets
+    const auto play_nail = [this, &place]
+    {
+      const int chosen = static_cast<int>(_level->builtins.NextRandom() * 5.0f);
+      PlaySoundAt(chosen == 1 ? "weapons/ric1.wav" : chosen == 2 ? "weapons/ric2.wav" : chosen == 3 ? "weapons/ric3.wav" : "weapons/tink1.wav", place);
+    };
+
+    switch (effect.kind)
+    {
+      case TempEntityKind::Spike:
+        particles.RunEffect(place, still, 0, 10);
+        play_nail();
+        break;
+      case TempEntityKind::SuperSpike:
+        particles.RunEffect(place, still, 0, 20);
+        play_nail();
+        break;
+      case TempEntityKind::Gunshot:
+        particles.RunEffect(place, still, 0, 20);
+        break;
+      case TempEntityKind::Explosion:
+        particles.Explosion(place);
+        PlaySoundAt("weapons/r_exp3.wav", place);
+        break;
+      case TempEntityKind::TarExplosion:
+        particles.BlobExplosion(place);
+        PlaySoundAt("weapons/r_exp3.wav", place);
+        break;
+      case TempEntityKind::WizardSpike:
+        particles.RunEffect(place, still, 20, 30);
+        PlaySoundAt("wizard/hit.wav", place);
+        break;
+      case TempEntityKind::KnightSpike:
+        particles.RunEffect(place, still, 226, 20);
+        PlaySoundAt("hknight/hit.wav", place);
+        break;
+      case TempEntityKind::LavaSplash:
+        particles.LavaSplash(place);
+        break;
+      case TempEntityKind::Teleport:
+        particles.TeleportSplash(place);
+        break;
+      default:
+        break;
+    }
+  }
+
+  void GameCode::ColoredExplosion(const ServerMessageTarget &target, const TempEntityExplosion &explosion)
+  {
+    _level->particles.Explosion2(explosion.position, explosion.color_start, explosion.color_count);
+    PlaySoundAt("weapons/r_exp3.wav", explosion.position);
+  }
+
+  void GameCode::IntermissionStarted(const ServerMessageTarget &target)
+  {
+    _is_over = true;
+  }
+
+  void GameCode::FinaleStarted(const ServerMessageTarget &target, const std::string_view text)
+  {
+    _is_over = true;
+    _finale_text = std::string(text);
+    _finale_at = _level->running.GetTime();
+    _finale_has_picture = true;
+  }
+
+  void GameCode::CutsceneStarted(const ServerMessageTarget &target, const std::string_view text)
+  {
+    FinaleStarted(target, text);
+    _finale_has_picture = false;
+  }
+
+  void GameCode::MusicTrackSet(const ServerMessageTarget &target, const std::int32_t track, const std::int32_t loop_track)
+  {
+    _sounds->PlayMusic(*_world, track);
+  }
+
+  void GameCode::CenterTextPrinted(const ServerMessageTarget &target, const std::string_view text)
+  {
+    PrintToCenter(target.client, text);
+  }
+
+  void GameCode::TextPrinted(const ServerMessageTarget &target, const std::string_view text)
+  {
+    PrintToAll(text);
+  }
+
   void GameCode::ServerCommand(const std::string_view text)
   {
     // The one thing the game code asks of the console that is done: a
@@ -726,7 +832,14 @@ namespace quake
     }
 
     std::vector<HudPicture> pictures;
-    if (IsPlayerHeld() && stats.health > 0)
+    if (!_finale_text.empty())
+    {
+      // the end of an episode: its text, letter after letter
+      const auto shown_for = static_cast<float>(now - _finale_at);
+      pictures = _finale_has_picture
+                   ? Intermission::LayoutFinale(_finale_text, shown_for, _hud.GetWidth(*_world, *_data, "gfx/finale.lmp"))
+                   : CenterText::LayoutRevealed(_finale_text, shown_for);
+    } else if (_is_over)
     {
       // a level that is over shows its counts, with the time it took
       if (_completed_time < 0.0f) { _completed_time = time; }
@@ -930,6 +1043,8 @@ namespace quake
     _impulse = 0.0f;
     _has_eyes = false;
     _status_bar.Forget();
+    _is_over = false;
+    _finale_text.clear();
     _messages.clear();
     _center_text.clear();
     _completed_time = -1.0f;
@@ -1092,6 +1207,9 @@ namespace quake
     // game move the player, not the physics of the engine.
     SteerPlayer(dt);
     _level->running.Advance(dt);
+
+    // the game code writes a message whole within a step
+    _reader.Flush();
 
     // a level the game code asked for is gone to once its step is over
     if (!_wanted_map.empty())
