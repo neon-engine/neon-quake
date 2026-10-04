@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <set>
 #include <span>
 #include <utility>
 
@@ -470,8 +471,86 @@ namespace quake
     return _level->fields.movetype.Get(_level->machine, player_entity) != static_cast<float>(QcMoveType::Walk);
   }
 
+  bool GameCode::LeadTour()
+  {
+    if (!_tours) { return false; }
+
+    QcMachine &machine = _level->machine;
+    const QcFields &fields = _level->fields;
+    _steps++;
+
+    // the tour is made once the level has settled: one of every kind of
+    // thing that shows a model, by its classname and its model
+    if (_steps == tour_start)
+    {
+      std::set<std::string> seen;
+      for (std::int32_t entity = player_entity + 1; entity < static_cast<std::int32_t>(_shown.size()); entity++)
+      {
+        const Shown &shown = _shown[entity];
+        if (shown.entity == 0 || shown.is_part || machine.IsEntityFree(entity)) { continue; }
+
+        const std::string name = std::string(fields.classname.GetText(machine, entity)) + " " + shown.model +
+                                 " skin " + std::to_string(static_cast<int>(fields.skin.Get(machine, entity)));
+        if (seen.insert(name).second) { _tour.push_back({name, entity, shown.origin}); }
+      }
+      for (std::size_t stop = 0; stop < _tour.size(); stop++)
+      {
+        _world->Info("TOUR " + std::to_string(stop) + " step " +
+          std::to_string(tour_start + static_cast<std::int64_t>(stop + 1) * tour_stop_steps - 1) + " " + _tour[stop].name);
+      }
+      _world->Info("TOUR ends at step " + std::to_string(tour_start + static_cast<std::int64_t>(_tour.size() + 1) * tour_stop_steps));
+    }
+    if (_steps < tour_start || _tour.empty()) { return true; }
+
+    const std::size_t stop = std::min(static_cast<std::size_t>((_steps - tour_start) / tour_stop_steps), _tour.size() - 1);
+    const TourStop &at = _tour[stop];
+    const Vector target = machine.IsEntityFree(at.entity) ? at.origin : fields.origin.Get(machine, at.entity);
+
+    // Looked at from the side that has the most room, a little from above.
+    // The player flies, is not seen by monsters, and is not hurt.
+    constexpr float distance = 72.0f;
+    Vector best = {target[0] - distance, target[1], target[2] + 24.0f};
+    float most = -1.0f;
+    for (int turn = 0; turn < 8; turn++)
+    {
+      const float angle = static_cast<float>(turn) * 0.785398f;
+      const Vector from = {target[0] + std::cos(angle) * distance, target[1] + std::sin(angle) * distance, target[2] + 24.0f};
+      const LevelTraceResult trace = _level->collision.Trace(
+        {target[0], target[1], target[2] + 24.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, from,
+        LevelTraceKind::NoMonsters, LevelCollision::no_entity);
+      if (trace.fraction > most)
+      {
+        most = trace.fraction;
+        best = {
+          target[0] + std::cos(angle) * distance * trace.fraction * 0.9f,
+          target[1] + std::sin(angle) * distance * trace.fraction * 0.9f,
+          target[2] + 24.0f,
+        };
+      }
+    }
+
+    const Vector view = fields.view_ofs.Get(machine, player_entity);
+    fields.origin.Set(machine, player_entity, {best[0], best[1], best[2] - view[2]});
+    fields.velocity.Set(machine, player_entity, {0.0f, 0.0f, 0.0f});
+    fields.movetype.Set(machine, player_entity, static_cast<float>(QcMoveType::NoClip));
+    fields.flags.Set(machine, player_entity, WithFlag(WithFlag(fields.flags.Get(machine, player_entity), QcFlag::NoTarget), QcFlag::GodMode));
+    _level->collision.Link(player_entity);
+
+    const float flat = std::hypot(target[0] - best[0], target[1] - best[1]);
+    _view_yaw = wrap_angle(std::atan2(target[1] - best[1], target[0] - best[0]) * 57.29578f);
+    // the middle of most things is a little above where they stand
+    _view_pitch = std::atan2(best[2] - (target[2] + 8.0f), std::max(flat, 1.0f)) * 57.29578f;
+
+    PlayerCommand command;
+    command.view_angles = {_view_pitch, _view_yaw, 0.0f};
+    _level->movement.Steer(player_entity, command, static_cast<float>(_level->running.GetTime()), 0.0f);
+    return true;
+  }
+
   void GameCode::SteerPlayer(const float dt)
   {
+    if (LeadTour()) { return; }
+
     QcMachine &machine = _level->machine;
     const QcFields &fields = _level->fields;
 
@@ -660,6 +739,7 @@ namespace quake
 
     Stop();
     _map = map;
+    _tours = std::getenv("QUAKE_TOUR") != nullptr;
     _start_parms.clear();
     _server_flags = 0.0f;
     return Run(error);
@@ -671,6 +751,8 @@ namespace quake
     _shown.clear();
     _models->Clear();
     _static_parts.clear();
+    _tour.clear();
+    _steps = 0;
     _sounds->Clear(*_world);
     if (_root != 0) { _world->DestroyEntity(_root); }
     _root = 0;

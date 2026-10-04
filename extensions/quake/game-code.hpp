@@ -185,6 +185,28 @@ namespace quake
     // weapon, which the game code is handed once.
     float _impulse = 0.0f;
 
+    /// A thing a tour stops at: what it is, and where.
+    struct TourStop
+    {
+      std::string name;
+      std::int32_t entity = 0;
+      Vector origin{};
+    };
+
+    // A tour of a level, for checking by eye that everything a level shows
+    // looks as it should: asked for with the environment variable
+    // QUAKE_TOUR, it flies the player to one of every kind of thing, a few
+    // steps each, so that a run that saves those frames has a picture of
+    // each. See README.md.
+    bool _tours = false;
+    std::vector<TourStop> _tour;
+    std::int64_t _steps = 0;
+
+    /// How many steps the level settles before a tour starts, and how many
+    /// it stops at each thing.
+    static constexpr std::int64_t tour_start = 30;
+    static constexpr std::int64_t tour_stop_steps = 6;
+
     // how many failures of the game code were said already
     std::size_t _failures_said = 0;
 
@@ -258,6 +280,11 @@ namespace quake
     /// Puts the entity of the engine where an entity of the game code is
     /// shown.
     void Place(const Shown &shown, const Vector &origin, const Vector &angles) const;
+
+    /// Leads the player from one kind of thing a level shows to the next,
+    /// when a tour was asked for, and says in the log which is looked at in
+    /// which step. True while it leads.
+    bool LeadTour();
 
     /// Tells the game code what the player holds down and where the player
     /// looks, and steers the player by it for a step.

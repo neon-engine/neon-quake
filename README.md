@@ -41,6 +41,7 @@ extensions/quake/
   formats/                  the formats of the game's data, read from bytes
   game/                     what the game does with its data, without the engine
   assets/                   its scenes, and the data of the game under id1/
+tools/tour.py               pictures of everything a level shows, for checking by eye
 ```
 
 `formats/` knows nothing of the engine: an archive, a picture, a level, a
@@ -109,6 +110,20 @@ character of its engine.
 It is a project with an extension, see
 [projects.md](../neon-engine/docs/projects.md#a-project-with-code-in-c) and
 [extensions.md](../neon-engine/docs/extensions.md) of the engine.
+
+## Checking a level by eye
+
+```sh
+tools/tour.py build maps/lq_e1m2.bsp /tmp/tour
+```
+
+takes a picture of one of every kind of thing a level shows, a monster, an
+item, a weapon, each from where there is room to look at it, and puts them
+together into sheets of twelve numbered pictures, with a list of what each
+number is. It runs the game without a window with the environment variable
+`QUAKE_TOUR` set, which has the game fly the player from one thing to the
+next. It is how a model, a skin, or a place that is wrong is found without
+playing every level.
 
 ## Building it
 
