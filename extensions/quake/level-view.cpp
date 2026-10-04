@@ -201,6 +201,8 @@ namespace quake
     // level without any is shown as its textures are.
     LightmapAtlas atlas;
     std::vector<std::string> lightmaps;
+    // the names the pictures of the light were handed over under
+    std::vector<std::string> light_names;
     if (!level.lighting.empty())
     {
       // an item is lit without colours: the data has none for the small levels
@@ -236,11 +238,13 @@ namespace quake
 
         for (std::size_t page = 0; lightmaps.size() < atlas.pages.size(); page++)
         {
+            const std::string name = "lightmaps/" + file_name + "/" + std::to_string(model) + "/" + std::to_string(page);
           lightmaps.push_back(world.SetImage(
-            "lightmaps/" + file_name + "/" + std::to_string(model) + "/" + std::to_string(page),
+            name,
             atlas.pages[page].width,
             atlas.pages[page].height,
             atlas.pages[page].pixels));
+          light_names.push_back(name);
         }
         if (is_item) { _item_lightmaps[item] = lightmaps; }
       }
@@ -364,6 +368,16 @@ namespace quake
       }
     }
 
+
+    // A model of the level with a light that flickers, pulses, or is
+    // switched keeps its atlas, which composes its pictures anew when the
+    // styles change. An item has the light it was made with.
+    const bool changes = std::ranges::any_of(atlas.styles, [](const std::uint8_t style) { return style != 0; });
+    if (!is_item && changes && light_names.size() == atlas.pages.size())
+    {
+      _changing_lights.push_back({std::move(atlas), std::move(light_names)});
+    }
+
     return true;
   }
 
@@ -379,6 +393,9 @@ namespace quake
     _player_placed = false;
     _has_lit = false;
     _has_light = false;
+    _changing_lights.clear();
+    _styles = LightStyles();
+    _has_style_values = false;
     _fog_density = 0.0f;
   }
 
@@ -386,7 +403,11 @@ namespace quake
   {
     if (!_has_light) { return {1.0f, 1.0f, 1.0f}; }
 
-    const BspLightSample sample = _light.Sample(place, {}, BspLightFilter::Bilinear);
+    // with the styles as they are now, so that a monster under a light that
+    // flickers flickers with it
+    const BspLightSample sample = _has_style_values
+                                    ? _light.Sample(place, std::span<const float>(_style_values), BspLightFilter::Bilinear)
+                                    : _light.Sample(place, {}, BspLightFilter::Bilinear);
 
     // The original shows a model with its colours times its light over 200,
     // counted as a screen is given them, and the ports of today twice as
@@ -454,6 +475,31 @@ namespace quake
     _lava_alpha = read_alpha("lavaalpha", _water_alpha);
     _slime_alpha = read_alpha("slimealpha", _water_alpha);
     _teleporter_alpha = read_alpha("telealpha", 1.0f);
+  }
+
+  void LevelView::SetLightStyle(const std::int32_t style, const std::string_view text)
+  {
+    if (style >= 0) { _styles.Set(static_cast<std::size_t>(style), text); }
+  }
+
+  void LevelView::UpdateLight(const World &world, const double time)
+  {
+    const LightStyles::Values values = _styles.GetValues(time);
+    if (_has_style_values && values == _style_values) { return; }
+    _style_values = values;
+    _has_style_values = true;
+
+    for (ChangingLight &light : _changing_lights)
+    {
+      // only the pictures that hold a face whose style changed come back
+      for (const std::uint32_t page : light.atlas.Compose(values))
+      {
+        if (page >= light.names.size()) { continue; }
+
+        const LightmapAtlasPage &pixels = light.atlas.pages[page];
+        world.SetImage(light.names[page], pixels.width, pixels.height, pixels.pixels);
+      }
+    }
   }
 
   float LevelView::GetFogDensity() const

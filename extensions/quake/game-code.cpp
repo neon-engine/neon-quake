@@ -316,6 +316,11 @@ namespace quake
     if (entity > 0 && static_cast<std::size_t>(entity) < _shown.size()) { Hide(_shown[entity]); }
   }
 
+  void GameCode::LightStyleSet(const std::int32_t style, const std::string_view text)
+  {
+    _view->SetLightStyle(style, text);
+  }
+
   void GameCode::ChangeLevel(const std::string_view level)
   {
     // The player takes along what the game code says a player keeps, and
@@ -1606,6 +1611,9 @@ namespace quake
     NoteEyes();
     ShowWeapon();
     UpdateBeams();
+
+    // the lights of the level flicker and are switched with its time
+    _view->UpdateLight(world, _level->running.GetTime());
     for (std::int32_t entity = 1; entity < _level->machine.GetEntityCount(); entity++) { Show(entity); }
     _sounds->Update(world);
     SayFailures();

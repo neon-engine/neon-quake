@@ -7,6 +7,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -15,6 +16,8 @@
 #include "formats/bsp-file.hpp"
 #include "formats/bsp-light-point.hpp"
 #include "formats/entity-text.hpp"
+#include "formats/light-styles.hpp"
+#include "formats/lightmap-atlas.hpp"
 #include "formats/lit-file.hpp"
 #include "game-data.hpp"
 
@@ -59,6 +62,23 @@ namespace quake
     /// Reads what the level says of itself for drawing it, from the keys of
     /// its first entity: `fog`, `wateralpha`, and the like.
     void ReadSettings(const BspFile &level);
+
+    /// The light of a model of the level that changes with time: the atlas,
+    /// which composes its pictures anew for other values of the styles, and
+    /// the names the renderer knows those pictures by.
+    struct ChangingLight
+    {
+      LightmapAtlas atlas;
+      std::vector<std::string> names;
+    };
+
+    // The styles of the lights of the level, as the game code sets them: a
+    // flicker, a pulse, a light that a switch turns on. And the models that
+    // have a face lit by any style but the steady one.
+    LightStyles _styles;
+    std::vector<ChangingLight> _changing_lights;
+    LightStyles::Values _style_values{};
+    bool _has_style_values = false;
 
     // the entity everything of the level that is shown stands under
     neon::extension::Entity _root = 0;
@@ -147,6 +167,17 @@ namespace quake
     /// and takes the colour of its light. `least` is the least light it
     /// has, of 255: what the player holds is never all dark.
     [[nodiscard]] std::array<float, 3> FindLight(const BspVector &place, float least = 0.0f) const;
+
+    /// Sets the style of a light, as the game code does with `lightstyle`:
+    /// a text of letters from `a` for dark to `z` for twice as bright, ten
+    /// of them shown in a second.
+    void SetLightStyle(std::int32_t style, std::string_view text);
+
+    /// Makes the light of the level what its styles make it at a time of
+    /// the game, in seconds: the pictures of the light that hold a face
+    /// whose style changed are composed anew and handed to the renderer
+    /// again. A level whose lights are all steady costs nothing.
+    void UpdateLight(const neon::extension::World &world, double time);
 
     /// How thick the fog of the level that is shown is, as the level says
     /// it, 0 for none, and its colour as the engine multiplies light.

@@ -497,6 +497,8 @@ namespace quake
 
     void ChangeLevel(std::string_view level) override;
 
+    void LightStyleSet(std::int32_t style, std::string_view text) override;
+
     void ClientCommand(std::int32_t client, std::string_view text) override;
 
     void WriteMessage(QcMessageDestination destination, std::int32_t client, const QcMessageValue &value) override;
