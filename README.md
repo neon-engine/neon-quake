@@ -31,7 +31,9 @@ extensions/quake/
 `formats/` knows nothing of the engine: an archive, a picture, a level, a
 model, the game code, each read from bytes in memory into plain structs. It is
 a library of its own, `quake-formats`, which the extension links, and which
-is tested without the engine. `quake.cpp` and what joins it turn what the
+is tested without the engine. What things collide with in a level is there
+too: its hulls, and a move traced through them as the original game traces
+it. `quake.cpp` and what joins it turn what the
 formats read into entities, meshes, and textures of the engine. The game
 counts in units of its own with z up, and winds its triangles the other way
 than the engine; `formats/quake-space.hpp` is the one place that turns it

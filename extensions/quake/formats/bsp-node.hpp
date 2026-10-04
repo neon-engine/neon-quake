@@ -14,6 +14,10 @@ namespace quake
 
     /// What is in front and behind. A number that is not negative is another
     /// node. A negative one is a leaf: leaf `-(child + 1)`, so -1 is leaf 0.
+    ///
+    /// A level with more than 32767 nodes keeps the numbers above that as
+    /// negative ones too: read without a sign, a child that is the number
+    /// of a node that is there is that node. `BspHull` reads them so.
     std::array<std::int16_t, 2> children{};
 
     /// The box around everything below this node.
