@@ -71,6 +71,8 @@ neon_add_project(quake
         extensions/quake/level-view.hpp
         extensions/quake/model-view.cpp
         extensions/quake/model-view.hpp
+        extensions/quake/sound-view.cpp
+        extensions/quake/sound-view.hpp
 )
 target_link_libraries(quake-extension PRIVATE quake-game)
 

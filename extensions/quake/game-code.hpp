@@ -26,6 +26,7 @@
 #include "game/qc-world-builtins.hpp"
 #include "level-view.hpp"
 #include "model-view.hpp"
+#include "sound-view.hpp"
 
 namespace quake
 {
@@ -98,6 +99,7 @@ namespace quake
     const GameData *_data = nullptr;
     LevelView *_view = nullptr;
     ModelView *_models = nullptr;
+    SoundView *_sounds = nullptr;
 
     NeonField _position_field{};
     NeonField _rotation_field{};
@@ -200,6 +202,7 @@ namespace quake
       const GameData &data,
       LevelView &view,
       ModelView &models,
+      SoundView &sounds,
       const std::string &map,
       std::string &error);
 

@@ -161,9 +161,46 @@ namespace quake
       MakeStatic(machine.GetParameterInteger(0));
     });
 
-    // nothing is heard yet, and no sparks fly
-    set(QcBuiltinNumber::Sound, [](QcMachine &machine) {});
-    set(QcBuiltinNumber::AmbientSound, [](QcMachine &machine) {});
+    // A sound is heard from the middle of the entity that makes it, which
+    // for a door is far from its origin.
+    set(QcBuiltinNumber::Sound, [this](QcMachine &machine)
+    {
+      const QcFields &fields = _level->fields;
+      const std::int32_t entity = machine.GetParameterInteger(0);
+      const Vector origin = fields.origin.Get(machine, entity);
+      const Vector mins = fields.mins.Get(machine, entity);
+      const Vector maxs = fields.maxs.Get(machine, entity);
+      const BspVector place = QuakeSpace::ToEnginePosition({
+        origin[0] + (mins[0] + maxs[0]) * 0.5f,
+        origin[1] + (mins[1] + maxs[1]) * 0.5f,
+        origin[2] + (mins[2] + maxs[2]) * 0.5f,
+      });
+
+      _sounds->Play(
+        *_world,
+        *_data,
+        entity,
+        static_cast<std::int32_t>(machine.GetParameterFloat(1)),
+        std::string(machine.GetParameterString(2)),
+        {place.x, place.y, place.z},
+        machine.GetParameterFloat(3),
+        machine.GetParameterFloat(4));
+    });
+
+    set(QcBuiltinNumber::AmbientSound, [this](QcMachine &machine)
+    {
+      const Vector origin = machine.GetParameterVector(0);
+      const BspVector place = QuakeSpace::ToEnginePosition({origin[0], origin[1], origin[2]});
+      _sounds->PlayAmbient(
+        *_world,
+        *_data,
+        std::string(machine.GetParameterString(1)),
+        {place.x, place.y, place.z},
+        machine.GetParameterFloat(2),
+        machine.GetParameterFloat(3));
+    });
+
+    // no sparks fly yet
     set(QcBuiltinNumber::Particle, [](QcMachine &machine) {});
   }
 
@@ -495,6 +532,7 @@ namespace quake
     const GameData &data,
     LevelView &view,
     ModelView &models,
+    SoundView &sounds,
     const std::string &map,
     std::string &error)
   {
@@ -502,6 +540,8 @@ namespace quake
     _data = &data;
     _view = &view;
     _models = &models;
+    _sounds = &sounds;
+    _sounds->Clear(world);
     _position_field = world.FindField("Transform", "position");
     _rotation_field = world.FindField("Transform", "rotation");
 
@@ -635,6 +675,7 @@ namespace quake
     PlacePlayer();
     ShowWeapon();
     for (std::int32_t entity = 1; entity < _level->machine.GetEntityCount(); entity++) { Show(entity); }
+    _sounds->Update(world);
     SayFailures();
   }
 } // quake

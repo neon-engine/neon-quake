@@ -13,11 +13,11 @@ items, and torches stand where the level puts them, with their models and
 the frames the game code gives them. A player stands where the game code
 puts one and walks the level. Doors open when they are walked up to, lifts
 and buttons move, teleporters take the player away, and items are picked up.
-Monsters see the player, walk, and attack, and what falls comes to lie, all
+What the game code plays is heard where it sounds: doors, items, monsters,
+the hum of a level. Monsters see the player, walk, and attack, and what falls comes to lie, all
 colliding with the level as the original does. The player holds a weapon,
 shoots with the left button of the mouse, and chooses a weapon with the
-number keys; what is shot dies. The player does not die yet, nothing is
-heard, and
+number keys; what is shot dies. The player does not die yet, and
 the sky, liquids, and lights that flicker are not drawn as such yet.
 
 ## What it is made of
@@ -32,6 +32,7 @@ extensions/quake/
   game-code.hpp/.cpp        the game code run for a level, and the world made to agree with it
   level-view.hpp/.cpp       a level shown in the world of the engine
   model-view.hpp/.cpp       the models of the game shown on entities of the engine
+  sound-view.hpp/.cpp       the sounds of the game played in the world of the engine
   formats/                  the formats of the game's data, read from bytes
   game/                     what the game does with its data, without the engine
   assets/                   its scenes, and the data of the game under id1/
