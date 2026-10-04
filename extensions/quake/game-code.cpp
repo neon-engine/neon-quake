@@ -1021,6 +1021,9 @@ namespace quake
 
     _level->running.ConnectClient(player_entity, "player", _start_parms);
 
+    // the music of the level, which the level names by a number
+    _sounds->PlayMusic(world, static_cast<int>(_level->fields.sounds.Get(_level->machine, 0)));
+
     // The original lets two steps pass before a player sees the level, in
     // which what was made settles: doors find their other halves, items
     // come to lie.

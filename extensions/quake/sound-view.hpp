@@ -51,6 +51,10 @@ namespace quake
 
     std::vector<Playing> _playing;
 
+    // the entity that plays the music, and the track it plays
+    neon::extension::Entity _music = 0;
+    int _track = 0;
+
     // how many entities were made to play a sound, which numbers them
     std::uint64_t _made = 0;
 
@@ -96,6 +100,12 @@ namespace quake
       const neon::extension::Vector3 &place,
       float volume,
       float wears_off);
+
+    /// Plays the music of a level, over and over: the track of a number as
+    /// the level names it, which the data has as `music/track02.ogg` and so
+    /// on, next to its archives. The music before it ends. A track the data
+    /// does not have, and the number 0, is silence.
+    void PlayMusic(const neon::extension::World &world, int track);
 
     /// Takes away the entities whose sound has ended.
     void Update(const neon::extension::World &world);

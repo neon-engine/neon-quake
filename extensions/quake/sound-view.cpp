@@ -107,6 +107,27 @@ namespace quake
     _playing.push_back({Make(world, name, path, place, volume, far, true), 0, 0, true});
   }
 
+  void SoundView::PlayMusic(const World &world, const int track)
+  {
+    if (track == _track && _music != 0) { return; }
+
+    if (_music != 0) { world.DestroyEntity(_music); }
+    _music = 0;
+    _track = track;
+    if (track <= 0) { return; }
+
+    // the tracks are files of their own, which the audio reads as they are
+    const std::string number = (track < 10 ? "0" : "") + std::to_string(track);
+    const std::string path = std::string(GameData::folder) + "music/track" + number + ".ogg";
+    if (!world.FileExists(path)) { return; }
+
+    _music = world.CreateEntity("music " + number);
+    world.AddComponent(_music, "SoundSource");
+    world.SetText(_music, world.FindField("SoundSource", "sound"), path);
+    world.SetBoolean(_music, world.FindField("SoundSource", "looping"), true);
+    world.SetText(_music, world.FindField("SoundSource", "group"), "music");
+  }
+
   void SoundView::Update(const World &world)
   {
     // the engine says that a sound has ended by no longer playing it
