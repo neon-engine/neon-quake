@@ -1,8 +1,6 @@
 #include "level-spawning.hpp"
 
 #include <algorithm>
-#include <array>
-#include <cstdlib>
 #include <optional>
 #include <string>
 
@@ -10,48 +8,10 @@
 #include "formats/qc-cell.hpp"
 #include "qc-move-type.hpp"
 #include "qc-solid.hpp"
+#include "qc-value-text.hpp"
 
 namespace quake
 {
-  // Helpers of LevelSpawning: values of the text of a level, taken apart.
-  namespace
-  {
-    /// A text of a level as the game code is to see it: the two characters
-    /// `\n` are one new line.
-    std::string WithNewLines(const std::string_view value)
-    {
-      std::string text;
-      text.reserve(value.size());
-      for (std::size_t i = 0; i < value.size(); i++)
-      {
-        if (value[i] == '\\' && i + 1 < value.size() && value[i + 1] == 'n')
-        {
-          text += '\n';
-          i++;
-          continue;
-        }
-        text += value[i];
-      }
-      return text;
-    }
-
-    /// Three numbers with spaces between. What is missing or is no number
-    /// is zero.
-    std::array<float, 3> ParseVector(const std::string &value)
-    {
-      std::array<float, 3> vector{};
-      const char *at = value.c_str();
-      for (float &part : vector)
-      {
-        char *end = nullptr;
-        part = std::strtof(at, &end);
-        if (end == at) { break; }
-        at = end;
-      }
-      return vector;
-    }
-  }
-
   LevelSpawning::LevelSpawning(QcMachine &machine)
     : _machine(machine), _globals(machine.GetProgs()), _fields(machine.GetProgs())
   {
@@ -78,55 +38,18 @@ namespace quake
     const ProgsDefinition *definition = progs.FindField(key);
     if (definition == nullptr) { return false; }
 
-    const std::span<QcCell> cells = _machine.GetEntity(entity);
     const std::size_t offset = definition->offset;
     const ProgsType type = definition->GetType();
-    if (offset + (type == ProgsType::Vector ? 3u : 1u) > cells.size()) { return false; }
+    const std::size_t size = QcValueText::GetSize(type);
+    if (offset + size > _machine.GetEntity(entity).size()) { return false; }
 
-    switch (type)
-    {
-      case ProgsType::String:
-      {
-        // the machine may move the entities when it grows, not when it
-        // keeps a string
-        cells[offset] = QcCell::OfInteger(_machine.AddString(WithNewLines(text)));
-        return true;
-      }
-      case ProgsType::Float:
-      {
-        cells[offset] = QcCell::OfFloat(std::strtof(text.c_str(), nullptr));
-        return true;
-      }
-      case ProgsType::Vector:
-      {
-        const std::array<float, 3> vector = ParseVector(text);
-        for (std::size_t i = 0; i < vector.size(); i++) { cells[offset + i] = QcCell::OfFloat(vector[i]); }
-        return true;
-      }
-      case ProgsType::Entity:
-      {
-        cells[offset] = QcCell::OfInteger(std::atoi(text.c_str()));
-        return true;
-      }
-      case ProgsType::Field:
-      {
-        const ProgsDefinition *named = progs.FindField(text);
-        if (named == nullptr) { return false; }
-        cells[offset] = QcCell::OfInteger(named->offset);
-        return true;
-      }
-      case ProgsType::Function:
-      {
-        const std::optional<std::int32_t> function = progs.FindFunction(text);
-        if (!function) { return false; }
-        cells[offset] = QcCell::OfInteger(*function);
-        return true;
-      }
-      default:
-      {
-        return false;
-      }
-    }
+    QcValueText::Cells value_cells;
+    if (!QcValueText::Parse(_machine, type, text, value_cells)) { return false; }
+
+    // asked for after the value was made: the machine keeps a string then
+    const std::span<QcCell> cells = _machine.GetEntity(entity);
+    for (std::size_t i = 0; i < size; i++) { cells[offset + i] = value_cells[i]; }
+    return true;
   }
 
   bool LevelSpawning::IsLeftOut(const std::int32_t entity, const LevelSpawningSettings &settings)

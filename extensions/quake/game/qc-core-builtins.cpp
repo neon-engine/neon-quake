@@ -442,6 +442,16 @@ namespace quake
     return _light_styles[static_cast<std::size_t>(style)];
   }
 
+  bool QcCoreBuiltins::RestoreLightStyle(const std::int32_t style, const std::string_view text)
+  {
+    if (style < 0 || style >= light_style_count) { return false; }
+
+    std::string &kept = _light_styles[static_cast<std::size_t>(style)];
+    kept = text;
+    _host.LightStyleSet(style, kept);
+    return true;
+  }
+
   void QcCoreBuiltins::SeedRandom(const std::uint32_t seed)
   {
     _random.seed(seed);

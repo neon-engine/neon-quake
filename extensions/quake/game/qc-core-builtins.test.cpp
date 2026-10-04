@@ -669,6 +669,17 @@ namespace
     EXPECT_EQ(_builtins.GetLightStyle(-1), "");
   }
 
+  TEST_F(QcCoreBuiltinsTest, TakesTheStyleOfALightFromASavedGameAndTellsTheHost)
+  {
+    EXPECT_TRUE(_builtins.RestoreLightStyle(32, "a"));
+    EXPECT_EQ(_builtins.GetLightStyle(32), "a");
+    EXPECT_THAT(_host.calls, Contains("lightstyle 32: a"));
+
+    EXPECT_FALSE(_builtins.RestoreLightStyle(64, "z"));
+    EXPECT_FALSE(_builtins.RestoreLightStyle(-1, "z"));
+    EXPECT_EQ(_host.calls.size(), 1u);
+  }
+
   // What is the host's alone to do.
 
   TEST_F(QcCoreBuiltinsTest, HandsCommandsAndTheChangeOfLevelToTheHost)

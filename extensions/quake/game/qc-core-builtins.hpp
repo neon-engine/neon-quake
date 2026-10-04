@@ -142,6 +142,12 @@ namespace quake
     /// for one there is not.
     [[nodiscard]] std::string_view GetLightStyle(std::int32_t style) const;
 
+    /// Gives a style the text a saved game has for it, as if the game code
+    /// had set it: it is kept, and the host is told with
+    /// QcHost::LightStyleSet(). False, with nothing done, for a style there
+    /// is not.
+    bool RestoreLightStyle(std::int32_t style, std::string_view text);
+
     /// Starts the numbers of `random` anew from a seed: with the time for a
     /// game, with a fixed number for a test or a recording.
     void SeedRandom(std::uint32_t seed);
