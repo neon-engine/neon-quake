@@ -134,6 +134,16 @@ namespace quake
       // that was left out
       const std::size_t part = _shown[entity].is_part ? read_part_number(_shown[entity].model) : 0;
       if (part > 0) { _static_parts.insert(part); }
+
+      // a tour looks at what stays as well, one of each kind
+      if (_tours && _shown[entity].entity != 0 && part == 0)
+      {
+        _static_stops.push_back({
+          std::string(_level->fields.classname.GetText(_level->machine, entity)) + " " + _shown[entity].model + " (static)",
+          0,
+          _level->fields.origin.Get(_level->machine, entity),
+        });
+      }
       _shown[entity] = {};
     }
     _level->builtins.RemoveEntity(_level->machine, entity);
@@ -290,6 +300,7 @@ namespace quake
       // A model of the level that the game code gave up is gone for the rest
       // of the level, as an entity made here is.
       if (shown.is_alias) { _models->Forget(shown.entity); }
+      if (shown.is_sprite) { _sprites->Forget(shown.entity); }
       _world->DestroyEntity(shown.entity);
     }
     shown = {};
@@ -340,7 +351,11 @@ namespace quake
         _world->AddComponent(shown.entity, "Transform");
         _view->ShowItem(*_world, *_data, shown.model, shown.entity);
       }
-      // a sprite, `.spr`, is not shown yet
+      else if (model.ends_with(".spr"))
+      {
+        shown.entity = _world->CreateEntity(MakeName(entity), _root);
+        shown.is_sprite = true;
+      }
     }
     if (shown.entity == 0) { return; }
 
@@ -352,6 +367,17 @@ namespace quake
       {
         Hide(shown);
         // kept by its name, so that it is not tried again in every step
+        shown.model = std::string(model);
+        return;
+      }
+    }
+
+    if (shown.is_sprite)
+    {
+      const auto frame = static_cast<std::int32_t>(fields.frame.Get(machine, entity));
+      if (!_sprites->Show(*_world, *_data, shown.entity, shown.model, frame))
+      {
+        Hide(shown);
         shown.model = std::string(model);
         return;
       }
@@ -442,7 +468,11 @@ namespace quake
 
     // The angles of the game are pitch, yaw, and roll: around what points
     // left, up, and forward, which the engine has as its z, y, and x.
-    if (!shown.is_part) { _world->SetVector3(shown.entity, _rotation_field, {angles[2], angles[1], angles[0]}); }
+    // A sprite is turned towards the camera in every frame, see SpriteView.
+    if (!shown.is_part && !shown.is_sprite)
+    {
+      _world->SetVector3(shown.entity, _rotation_field, {angles[2], angles[1], angles[0]});
+    }
   }
 
   void GameCode::Interpolate(const World &world, const float blend)
@@ -484,6 +514,10 @@ namespace quake
     if (_steps == tour_start)
     {
       std::set<std::string> seen;
+      for (const TourStop &stop : _static_stops)
+      {
+        if (seen.insert(stop.name).second) { _tour.push_back(stop); }
+      }
       for (std::int32_t entity = player_entity + 1; entity < static_cast<std::int32_t>(_shown.size()); entity++)
       {
         const Shown &shown = _shown[entity];
@@ -504,7 +538,8 @@ namespace quake
 
     const std::size_t stop = std::min(static_cast<std::size_t>((_steps - tour_start) / tour_stop_steps), _tour.size() - 1);
     const TourStop &at = _tour[stop];
-    const Vector target = machine.IsEntityFree(at.entity) ? at.origin : fields.origin.Get(machine, at.entity);
+    const Vector target =
+      at.entity == 0 || machine.IsEntityFree(at.entity) ? at.origin : fields.origin.Get(machine, at.entity);
 
     // Looked at from the side that has the most room, a little from above.
     // The player flies, is not seen by monsters, and is not hurt.
@@ -647,12 +682,17 @@ namespace quake
     const Vector punch = fields.punchangle.Get(machine, player_entity);
     _world->SetVector3(_player, _rotation_field, {0.0f, QuakeSpace::ToEngineYaw(_view_yaw + punch[1]), 0.0f});
     if (_camera != 0) { _world->SetVector3(_camera, _rotation_field, {-(_view_pitch + punch[0]), 0.0f, 0.0f}); }
+
+    // every sprite turns to where it is looked at from
+    _sprites->Face(*_world, -(_view_pitch + punch[0]), QuakeSpace::ToEngineYaw(_view_yaw + punch[1]));
   }
 
   void GameCode::ReadInput(const World &world, const float frame_time)
   {
     if (_level == nullptr) { return; }
     _frame_time = frame_time;
+
+    _sprites->Update(world, *_data, _level->running.GetTime());
 
     // The player looks around in every frame that is drawn, not in every
     // step of the world, so that aiming is as quick as the display. A
@@ -726,6 +766,7 @@ namespace quake
     LevelView &view,
     ModelView &models,
     SoundView &sounds,
+    SpriteView &sprites,
     const std::string &map,
     std::string &error)
   {
@@ -734,6 +775,7 @@ namespace quake
     _view = &view;
     _models = &models;
     _sounds = &sounds;
+    _sprites = &sprites;
     _position_field = world.FindField("Transform", "position");
     _rotation_field = world.FindField("Transform", "rotation");
 
@@ -750,8 +792,10 @@ namespace quake
     _level.reset();
     _shown.clear();
     _models->Clear();
+    _sprites->Clear();
     _static_parts.clear();
     _tour.clear();
+    _static_stops.clear();
     _steps = 0;
     _sounds->Clear(*_world);
     if (_root != 0) { _world->DestroyEntity(_root); }

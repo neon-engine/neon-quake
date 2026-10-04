@@ -64,6 +64,7 @@ namespace quake
     LevelView _level;
     ModelView _models;
     SoundView _sounds;
+    SpriteView _sprites;
     GameCode _code;
     bool _has_data = false;
 
@@ -137,7 +138,7 @@ namespace quake
       }
 
       // a level without game code is still one to walk
-      if (std::string error; !_code.Start(world, _data, _level, _models, _sounds, map, error))
+      if (std::string error; !_code.Start(world, _data, _level, _models, _sounds, _sprites, map, error))
       {
         world.Warn("The level is shown without the game: " + error);
       }

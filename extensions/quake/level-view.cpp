@@ -307,6 +307,13 @@ namespace quake
           world.SetTexts(entity, textures_field, {picture});
         }
 
+        // a texture with holes, a fence or the letters of a sign, is seen
+        // through where it has them
+        if (has_texture && level.textures[group.texture]->HasHoles())
+        {
+          world.SetText(entity, world.FindField("Renderable", "material.alpha_mode"), "blend");
+        }
+
         if (!world.SetMesh(entity, corners, indices)) { continue; }
         triangles += indices.size() / 3;
 

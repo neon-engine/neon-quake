@@ -30,6 +30,7 @@
 #include "level-view.hpp"
 #include "model-view.hpp"
 #include "sound-view.hpp"
+#include "sprite-view.hpp"
 
 namespace quake
 {
@@ -96,6 +97,9 @@ namespace quake
       /// Whether it is a model of the kind ModelView shows.
       bool is_alias = false;
 
+      /// Whether it is a sprite, which SpriteView shows and turns.
+      bool is_sprite = false;
+
       Vector origin{};
       Vector angles{};
       bool is_placed = false;
@@ -148,6 +152,7 @@ namespace quake
     LevelView *_view = nullptr;
     ModelView *_models = nullptr;
     SoundView *_sounds = nullptr;
+    SpriteView *_sprites = nullptr;
 
     NeonField _position_field{};
     NeonField _rotation_field{};
@@ -200,6 +205,7 @@ namespace quake
     // each. See README.md.
     bool _tours = false;
     std::vector<TourStop> _tour;
+    std::vector<TourStop> _static_stops;
     std::int64_t _steps = 0;
 
     /// How many steps the level settles before a tour starts, and how many
@@ -351,6 +357,7 @@ namespace quake
       LevelView &view,
       ModelView &models,
       SoundView &sounds,
+      SpriteView &sprites,
       const std::string &map,
       std::string &error);
 

@@ -38,6 +38,7 @@ extensions/quake/
   level-view.hpp/.cpp       a level shown in the world of the engine
   model-view.hpp/.cpp       the models of the game shown on entities of the engine
   sound-view.hpp/.cpp       the sounds of the game played in the world of the engine
+  sprite-view.hpp/.cpp      the sprites of the game, flat pictures that turn to the camera
   formats/                  the formats of the game's data, read from bytes
   game/                     what the game does with its data, without the engine
   assets/                   its scenes, and the data of the game under id1/
