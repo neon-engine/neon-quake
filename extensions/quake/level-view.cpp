@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include "game-shaders.hpp"
 #include "formats/bsp-mesh.hpp"
 #include "formats/lightmap-atlas.hpp"
 #include "formats/quake-space.hpp"
@@ -251,8 +252,7 @@ namespace quake
     // level larger than any here
     for (const BspMeshGroup &group : mesh.groups)
     {
-      // the sky is no wall with a picture on it
-      if (group.is_sky || group.indices.empty()) { continue; }
+      if (group.indices.empty()) { continue; }
 
       const bool has_texture = group.texture >= 0 &&
                                static_cast<std::size_t>(group.texture) < level.textures.size() &&
@@ -262,7 +262,7 @@ namespace quake
 
       // a liquid is shown as it is, and glows in the dark as it does in the
       // game
-      const bool group_is_lit = is_lit && !group.is_liquid;
+      const bool group_is_lit = is_lit && !group.is_liquid && !group.is_sky;
       const std::size_t page_count = group_is_lit ? lightmaps.size() : 1;
 
       for (std::size_t page = 0; page < page_count; page++)
@@ -306,7 +306,11 @@ namespace quake
         const Entity entity = world.CreateEntity(page == 0 ? name : name + " " + std::to_string(page), parent);
         world.AddComponent(entity, "Transform");
         world.AddComponent(entity, "Renderable");
-        world.SetText(entity, shader_field, "assets://shaders/unlit");
+        // the sky drifts, a liquid swims, and everything else is its texture
+        // and its light
+        world.SetText(
+          entity, shader_field,
+          group.is_sky ? GameShaders::sky : group.is_liquid ? GameShaders::liquid : GameShaders::surface);
 
         if (const std::string &picture = FindPicture(world, data, level, item, group.texture); !picture.empty())
         {

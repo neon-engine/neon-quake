@@ -6,6 +6,7 @@
 
 #include "formats/picture-reader.hpp"
 #include "formats/picture.hpp"
+#include "game-shaders.hpp"
 
 namespace quake
 {
@@ -156,7 +157,7 @@ namespace quake
         entity = world.CreateEntity("hud " + name, camera);
         world.AddComponent(entity, "Transform");
         world.AddComponent(entity, "Renderable");
-        world.SetText(entity, world.FindField("Renderable", "shader"), "assets://shaders/unlit");
+        world.SetText(entity, world.FindField("Renderable", "shader"), GameShaders::surface);
         world.SetText(entity, world.FindField("Renderable", "material.alpha_mode"), "blend");
         world.SetTexts(entity, world.FindField("Renderable", "textures"), {Find(world, data, name).path});
 

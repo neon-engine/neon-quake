@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "formats/quake-space.hpp"
+#include "game-shaders.hpp"
 
 namespace quake
 {
@@ -108,7 +109,7 @@ namespace quake
     {
       world.AddComponent(entity, "Transform");
       world.AddComponent(entity, "Renderable");
-      world.SetText(entity, world.FindField("Renderable", "shader"), "assets://shaders/unlit");
+      world.SetText(entity, world.FindField("Renderable", "shader"), GameShaders::surface);
       // what the picture leaves out is seen through
       world.SetText(entity, world.FindField("Renderable", "material.alpha_mode"), "blend");
     } else if (known->second.sprite == sprite && known->second.frame == wanted.frame &&

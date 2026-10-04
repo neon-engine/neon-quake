@@ -170,6 +170,10 @@ namespace quake
     static constexpr double message_seconds = 4.0;
     static constexpr std::size_t most_messages = 4;
 
+    // The clock of the shaders of the game, see shaders/quake.glsl: a light
+    // that gives none, whose numbers the shaders read.
+    neon::extension::Entity _clock = 0;
+
     // what draws the particles of the level
     ParticleView _particle_view;
 

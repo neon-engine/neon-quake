@@ -5,6 +5,7 @@
 #include <utility>
 
 #include "formats/quake-space.hpp"
+#include "game-shaders.hpp"
 
 namespace quake
 {
@@ -165,7 +166,7 @@ namespace quake
     {
       world.AddComponent(entity, "Transform");
       world.AddComponent(entity, "Renderable");
-      world.SetText(entity, world.FindField("Renderable", "shader"), "assets://shaders/unlit");
+      world.SetText(entity, world.FindField("Renderable", "shader"), GameShaders::surface);
     }
 
     if (is_new || known->second.model != model || known->second.skin != wanted.skin)

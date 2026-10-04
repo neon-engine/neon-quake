@@ -24,9 +24,8 @@ and the end of a level leads to the next, with what the player carries. What
 moves is shown on its way in every frame that is drawn, a monster from one
 pose and one stride to the next, so the game is as fluid as the display.
 The status bar of the original is there, with what the game code tells the
-player above it and the counts of a level at its end. Still, the sky,
-liquids, and lights that flicker are not drawn as such yet, and there is no
-menu.
+player above it and the counts of a level at its end. Textures are shown pixel by pixel, liquids swim, and the sky drifts. Still,
+lights that flicker are steady, there is no fog, and there is no menu.
 
 ## What it is made of
 
@@ -44,6 +43,7 @@ extensions/quake/
   particle-view.hpp/.cpp    the particles of the game, sparks and smoke, drawn as one mesh
   sound-view.hpp/.cpp       the sounds of the game played in the world of the engine
   sprite-view.hpp/.cpp      the sprites of the game, flat pictures that turn to the camera
+  shaders/                  the shaders of the game: pixels as they are, liquids, the sky
   formats/                  the formats of the game's data, read from bytes
   game/                     what the game does with its data, without the engine
   assets/                   its scenes, and the data of the game under id1/
@@ -134,7 +134,9 @@ playing every level.
 ## Building it
 
 Neon Engine is checked out next to this repository, as `../neon-engine`, and
-built once, so that there is a NeonRuntime. Nothing of the engine is compiled
+built once, so that there is a NeonRuntime. `glslang` compiles the shaders of
+the game (`brew install glslang`, `apt install glslang-tools`), as it does
+those of the engine. Nothing of the engine is compiled
 here: only the files of the extension are.
 
 ```sh

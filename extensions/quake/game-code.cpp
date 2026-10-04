@@ -914,6 +914,19 @@ namespace quake
     const LevelAxes axes = LevelAxes::Of({_view_pitch + punch[0], _view_yaw + punch[1], 0.0f});
     _particle_view.Show(*_world, _data->GetPalette(), _root, _level->particles.GetParticles(), eyes, axes.forward, axes.right, axes.up);
 
+    // The shaders are told the time, which makes liquids swim and the sky
+    // drift, in every frame that is drawn.
+    if (_clock == 0)
+    {
+      _clock = _world->CreateEntity("clock of the shaders", _root);
+      _world->AddComponent(_clock, "Transform");
+      _world->AddComponent(_clock, "Light");
+      _world->SetText(_clock, _world->FindField("Light", "type"), "point");
+    }
+    _world->SetNumber(
+      _clock, _world->FindField("Light", "constant"),
+      _level->running.GetTime() + static_cast<double>(blend * _step));
+
     ShowHud();
 
     // every sprite turns to where it is looked at from
@@ -1042,6 +1055,7 @@ namespace quake
     _weapon = 0;
     _impulse = 0.0f;
     _has_eyes = false;
+    _clock = 0;
     _status_bar.Forget();
     _is_over = false;
     _finale_text.clear();
