@@ -396,6 +396,105 @@ namespace quake
     PlaySoundAt("weapons/r_exp3.wav", explosion.position);
   }
 
+  void GameCode::BeamEffect(const ServerMessageTarget &target, const TempEntityBeam &beam)
+  {
+    const char *model = beam.kind == TempEntityKind::Lightning1 ? "progs/bolt.mdl"
+                        : beam.kind == TempEntityKind::Lightning2 ? "progs/bolt2.mdl"
+                        : beam.kind == TempEntityKind::Lightning3 ? "progs/bolt3.mdl"
+                        : "progs/beam.mdl";
+
+    // a bolt of an entity takes the place of the one it had
+    Beam *made = nullptr;
+    for (Beam &known : _beams)
+    {
+      if (known.owner == beam.entity) { made = &known; }
+    }
+    if (made == nullptr)
+    {
+      _beams.emplace_back();
+      made = &_beams.back();
+    }
+
+    made->owner = beam.entity;
+    made->model = model;
+    made->start = beam.start;
+    made->end = beam.end;
+    made->ends_at = _level->running.GetTime() + beam_seconds;
+    ShowBeam(*made);
+  }
+
+  void GameCode::HideBeam(Beam &beam)
+  {
+    for (const Entity piece : beam.pieces)
+    {
+      _models->Forget(piece);
+      _world->DestroyEntity(piece);
+    }
+    beam.pieces.clear();
+  }
+
+  void GameCode::ShowBeam(Beam &beam)
+  {
+    const Vector way = {beam.end[0] - beam.start[0], beam.end[1] - beam.start[1], beam.end[2] - beam.start[2]};
+    const float flat = std::hypot(way[0], way[1]);
+    const float length = std::hypot(flat, way[2]);
+
+    // which way it points: around, and up
+    const float yaw = flat > 0.0f ? std::atan2(way[1], way[0]) * 57.29578f : 0.0f;
+    const float pitch = flat > 0.0f ? std::atan2(way[2], flat) * 57.29578f : way[2] > 0.0f ? 90.0f : 270.0f;
+
+    // a piece every so far, each turned around the bolt by chance, which is
+    // what makes it flicker
+    const auto wanted = static_cast<std::size_t>(length / beam_piece);
+    while (beam.pieces.size() > wanted)
+    {
+      _models->Forget(beam.pieces.back());
+      _world->DestroyEntity(beam.pieces.back());
+      beam.pieces.pop_back();
+    }
+    for (std::size_t piece = 0; piece < wanted; piece++)
+    {
+      if (piece == beam.pieces.size())
+      {
+        const Entity made = _world->CreateEntity(MakeName(beam.owner), _root);
+        if (!_models->Show(*_world, *_data, made, beam.model, 0, 0, {1.0f, 1.0f, 1.0f}, false))
+        {
+          _world->DestroyEntity(made);
+          return;
+        }
+        beam.pieces.push_back(made);
+      }
+
+      const float along = static_cast<float>(piece) * beam_piece / length;
+      const BspVector place = QuakeSpace::ToEnginePosition({
+        beam.start[0] + way[0] * along, beam.start[1] + way[1] * along, beam.start[2] + way[2] * along,
+      });
+      _world->SetVector3(beam.pieces[piece], _position_field, {place.x, place.y, place.z});
+      _world->SetVector3(beam.pieces[piece], _rotation_field, {_level->builtins.NextRandom() * 360.0f, yaw, pitch});
+    }
+  }
+
+  void GameCode::UpdateBeams()
+  {
+    const double now = _level->running.GetTime();
+    for (Beam &beam : _beams)
+    {
+      if (beam.ends_at <= now)
+      {
+        HideBeam(beam);
+        continue;
+      }
+
+      // the bolt of the player comes from where the player is
+      if (beam.owner == player_entity)
+      {
+        beam.start = _level->fields.origin.Get(_level->machine, player_entity);
+        ShowBeam(beam);
+      }
+    }
+    std::erase_if(_beams, [now](const Beam &beam) { return beam.ends_at <= now; });
+  }
+
   void GameCode::IntermissionStarted(const ServerMessageTarget &target)
   {
     _is_over = true;
@@ -1083,6 +1182,8 @@ namespace quake
   {
     _level.reset();
     _shown.clear();
+    // what the bolts showed goes with the level
+    _beams.clear();
     _models->Clear();
     _sprites->Clear();
     _particle_view.Clear();
@@ -1277,6 +1378,7 @@ namespace quake
 
     NoteEyes();
     ShowWeapon();
+    UpdateBeams();
     for (std::int32_t entity = 1; entity < _level->machine.GetEntityCount(); entity++) { Show(entity); }
     _sounds->Update(world);
     SayFailures();

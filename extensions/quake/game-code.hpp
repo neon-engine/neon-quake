@@ -153,6 +153,38 @@ namespace quake
     std::string _center_text;
     double _center_at = 0.0;
 
+    /// A bolt of lightning between two places: the entity of the game code
+    /// it comes from, the model it is made of, where it starts and ends,
+    /// when it goes, and the entities of the engine that show its pieces.
+    struct Beam
+    {
+      std::int32_t owner = 0;
+      std::string model;
+      Vector start{};
+      Vector end{};
+      double ends_at = 0.0;
+      std::vector<neon::extension::Entity> pieces;
+    };
+
+    // the bolts that are there; one of an entity takes the place of the one
+    // that entity had
+    std::vector<Beam> _beams;
+
+    /// For how long a bolt is there, in seconds, and how long a piece of it
+    /// is, in units of the game, as in the original.
+    static constexpr double beam_seconds = 0.2;
+    static constexpr float beam_piece = 30.0f;
+
+    /// Shows the pieces of a bolt from where it starts to where it ends.
+    void ShowBeam(Beam &beam);
+
+    /// Takes the pieces of a bolt out of the world.
+    void HideBeam(Beam &beam);
+
+    /// Takes away the bolts whose time is over, and has one that comes from
+    /// the player start where the player is now.
+    void UpdateBeams();
+
     // puts what the game code writes for the player together into messages
     ServerMessageReader _reader{*this};
 
@@ -432,6 +464,8 @@ namespace quake
     void PointEffect(const ServerMessageTarget &target, const TempEntityPoint &effect) override;
 
     void ColoredExplosion(const ServerMessageTarget &target, const TempEntityExplosion &explosion) override;
+
+    void BeamEffect(const ServerMessageTarget &target, const TempEntityBeam &beam) override;
 
     void IntermissionStarted(const ServerMessageTarget &target) override;
 
