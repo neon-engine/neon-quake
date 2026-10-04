@@ -42,7 +42,15 @@ namespace quake
 
       /// Whether it starts over for as long as the level is there.
       bool is_ambient = false;
+
+      /// How loud the game code asked for it, from 0 to 1, before what the
+      /// player set is multiplied in.
+      float volume = 1.0f;
     };
+
+    // how loud the player set the sounds and the music, from 0 to 1
+    float _sound_volume = 1.0f;
+    float _music_volume = 1.0f;
 
     // The path a sound source plays each sound by, by the name the game
     // code has for it. Empty for one the data does not hold or the audio
@@ -106,6 +114,10 @@ namespace quake
     /// on, next to its archives. The music before it ends. A track the data
     /// does not have, and the number 0, is silence.
     void PlayMusic(const neon::extension::World &world, int track);
+
+    /// Sets how loud the sounds and the music are, each from 0 to 1, for
+    /// what plays and for what is played from now on.
+    void SetVolumes(const neon::extension::World &world, float sounds, float music);
 
     /// Takes away the entities whose sound has ended.
     void Update(const neon::extension::World &world);

@@ -181,6 +181,10 @@ namespace quake
 
     void WriteOptions();
 
+    /// Makes what the options say so: how loud the sounds and the music
+    /// are, and how bright the game is shown.
+    void ApplyOptions();
+
     /// Keeps the game as it is in a place of the menu.
     void Save(std::size_t slot);
 

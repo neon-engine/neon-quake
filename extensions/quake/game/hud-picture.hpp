@@ -27,11 +27,12 @@ namespace quake
   /// once they are scaled: a picture at x, y, drawn at a scale s on a
   /// screen W wide and H high, has its corner at
   ///
-  /// - `(W - 320 s) / 2 + x s` from the left, for both anchors,
+  /// - `(W - 320 s) / 2 + x s` from the left, for the two that follow,
   /// - `H - (200 - y) s` from the top for `HudAnchor::Bottom`,
   /// - `(H - 200 s) / 2 + y s` from the top for `HudAnchor::Center`,
   ///
-  /// and is s times as wide and high as it has pixels.
+  /// and is s times as wide and high as it has pixels. `HudAnchor::TopLeft`
+  /// counts from the corner of the real screen, at a scale of its own.
   struct HudPicture
   {
     /// The name of the lump that holds the letters, in `gfx.wad`.

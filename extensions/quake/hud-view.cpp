@@ -1,17 +1,15 @@
 #include "hud-view.hpp"
 
+#include <algorithm>
 #include <cmath>
-#include <numbers>
-#include <span>
+#include <cstdio>
+#include <limits>
 
 #include "formats/picture-reader.hpp"
 #include "formats/picture.hpp"
-#include "game-shaders.hpp"
 
 namespace quake
 {
-  using neon::extension::Entity;
-  using neon::extension::Vertex;
   using neon::extension::World;
 
   const HudView::Known &HudView::Find(const World &world, const GameData &data, const std::string_view name)
@@ -65,45 +63,73 @@ namespace quake
     return made;
   }
 
-  void HudView::ShowTint(const World &world, const Entity camera, const NeonColor &colour)
+  const std::string &HudView::FindLetter(const World &world, const GameData &data, const std::int32_t letter)
   {
-    if (camera == 0) { return; }
-    if (camera != _tint_camera)
-    {
-      _tint = 0;
-      _tint_camera = camera;
-    }
-    if (_tint != 0 && colour.r == _tint_colour.r && colour.g == _tint_colour.g && colour.b == _tint_colour.b &&
-        colour.a == _tint_colour.a)
-    {
-      return;
-    }
-    if (_tint == 0 && colour.a <= 0.0f) { return; }
+    if (const auto known = _letters.find(letter); known != _letters.end()) { return known->second; }
 
-    if (_tint == 0)
+    std::string &made = _letters[letter];
+
+    // the sheet is an archive lump without a size of its own: 16 letters
+    // in a row and 16 rows, each 8 pixels
+    Picture sheet;
+    std::string problem;
+    if (!_was_read) { Find(world, data, HudPicture::characters_name); }
+    if (!_has_wad || !_wad.ReadPicture(HudPicture::characters_name, sheet, problem)) { return made; }
+
+    const std::int32_t size = HudPicture::character_size;
+    const std::int32_t column = letter % 16;
+    const std::int32_t row = letter / 16;
+    if (sheet.width < 16 * size || sheet.height < 16 * size) { return made; }
+
+    // a letter is see-through where it has the first colour of the palette
+    std::vector<std::uint8_t> holes(static_cast<std::size_t>(size * size));
+    for (std::int32_t y = 0; y < size; y++)
     {
-      // one white pixel, which the corners give their colour
-      const std::string white = world.SetImage("hud/white", 1, 1, {255, 255, 255, 255});
-      _tint = world.CreateEntity("hud tint", camera);
-      world.AddComponent(_tint, "Transform");
-      world.AddComponent(_tint, "Renderable");
-      world.SetText(_tint, world.FindField("Renderable", "shader"), GameShaders::surface);
-      world.SetText(_tint, world.FindField("Renderable", "material.alpha_mode"), "blend");
-      world.SetTexts(_tint, world.FindField("Renderable", "textures"), {white});
-      // behind the pictures, which stand at the distance and nearer
-      world.SetVector3(_tint, world.FindField("Transform", "position"), {0.0f, 0.0f, -layer_step});
+      for (std::int32_t x = 0; x < size; x++)
+      {
+        const std::uint8_t pixel =
+          sheet.pixels[static_cast<std::size_t>((row * size + y) * sheet.width + column * size + x)];
+        holes[static_cast<std::size_t>(y * size + x)] = pixel == 0 ? 255 : pixel;
+      }
     }
+    made = world.SetImage(
+      "hud/letter-" + std::to_string(letter),
+      static_cast<std::uint32_t>(size),
+      static_cast<std::uint32_t>(size),
+      data.GetPalette().ToRgba(holes, true));
+    return made;
+  }
+
+  bool HudView::Open(const World &world)
+  {
+    if (_is_open) { return _holder != 0; }
+
+    _is_open = true;
+    if (!world.ShowUi(file))
+    {
+      world.Warn("Nothing is shown over the world: " + std::string(file) + " cannot be shown");
+      return false;
+    }
+    _tint = world.FindUi("quake-tint");
+    _holder = world.FindUi("quake-pictures");
+    return _holder != 0;
+  }
+
+  void HudView::ShowTint(const World &world, const float red, const float green, const float blue, const float amount)
+  {
+    if (!Open(world) || _tint == 0) { return; }
+
+    char colour[64];
+    std::snprintf(
+      colour, sizeof(colour), "rgba(%d, %d, %d, %.3f)",
+      static_cast<int>(std::clamp(red, 0.0f, 255.0f)),
+      static_cast<int>(std::clamp(green, 0.0f, 255.0f)),
+      static_cast<int>(std::clamp(blue, 0.0f, 255.0f)),
+      static_cast<double>(std::clamp(amount, 0.0f, 1.0f)));
+    if (_tint_colour == colour) { return; }
+
     _tint_colour = colour;
-
-    // far larger than the view, whatever its shape
-    const float side = distance * 40.0f;
-    const std::vector<Vertex> corners = {
-      {{-side, side, -distance}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}, colour},
-      {{-side, -side, -distance}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}, colour},
-      {{side, -side, -distance}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}, colour},
-      {{side, side, -distance}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f}, colour},
-    };
-    world.SetMesh(_tint, corners, {0, 1, 2, 0, 2, 3});
+    world.SetUiStyle(_tint, "background-color", _tint_colour);
   }
 
   std::int32_t HudView::GetWidth(const World &world, const GameData &data, const std::string_view name)
@@ -111,116 +137,150 @@ namespace quake
     return Find(world, data, name).width;
   }
 
-  void HudView::Show(
-    const World &world,
-    const GameData &data,
-    const Entity camera,
-    const std::vector<HudPicture> &pictures)
+  void HudView::Show(const World &world, const GameData &data, const std::vector<HudPicture> &pictures)
   {
-    if (camera == 0) { return; }
-    if (camera == _camera && pictures == _shown) { return; }
+    if (!Open(world)) { return; }
 
-    // another camera: what stood in front of the one before went with it
-    if (camera != _camera)
-    {
-      _entities.clear();
-      _camera = camera;
-    }
+    int view_width = 0;
+    int view_height = 0;
+    if (!world.GetViewSize(view_width, view_height) || view_height <= 0) { return; }
+    if (pictures == _shown && view_width == _view_width && view_height == _view_height) { return; }
+
     _shown = pictures;
+    _view_width = view_width;
+    _view_height = view_height;
 
-    // how large a pixel of the original is on the plane, in metres
-    const float half_height = distance * std::tan(field_of_view * 0.5f * std::numbers::pi_v<float> / 180.0f);
-    const float pixel = 2.0f * half_height / screen_height;
+    // how many pixels of the real screen a pixel of the pictures is, and
+    // one of the lines at the top, which is a whole number of them
+    const float scale = static_cast<float>(view_height) / screen_height;
+    const float notice_scale = std::max(1.0f, std::round(static_cast<float>(view_height) / notice_height));
 
-    // the squares, by the picture they show
-    struct Mesh
+    // a place in pixels of the real screen, as a length of the file
+    const auto to_length = [scale](const std::int32_t pixels)
     {
-      std::vector<Vertex> corners;
-      std::vector<std::uint32_t> indices;
+      char text[32];
+      std::snprintf(text, sizeof(text), "%.4fpx", static_cast<double>(static_cast<float>(pixels) / scale));
+      return std::string(text);
     };
-    std::map<std::string, Mesh, std::less<>> meshes;
-    for (auto &[name, entity] : _entities) { meshes[name]; }
 
-    // a little nearer for each that is drawn later, so that what is drawn
-    // last is in front
-    float nearer = 0.0f;
+    for (auto &[path, used] : _used) { used = 0; }
+    std::int32_t order = 0;
     for (const HudPicture &command : pictures)
     {
       const bool is_letter = command.kind == HudPictureKind::Character;
-      const std::string_view name = is_letter ? HudPicture::characters_name : command.name;
-      const Known &known = Find(world, data, name);
-      if (known.path.empty()) { continue; }
-
-      const float width = static_cast<float>(is_letter ? HudPicture::character_size : known.width);
-      const float height = static_cast<float>(is_letter ? HudPicture::character_size : known.height);
-
-      // from the screen of the original, with its origin at the top left, to
-      // the plane, with its origin in the middle and up as more
-      const float left = (static_cast<float>(command.x) - 160.0f) * pixel;
-      const float top = command.anchor == HudAnchor::Bottom
-                          ? -half_height + (200.0f - static_cast<float>(command.y)) * pixel
-                          : (100.0f - static_cast<float>(command.y)) * pixel;
-      const float right = left + width * pixel;
-      const float bottom = top - height * pixel;
-
-      // a letter is one of 16 by 16 in its picture
-      float u0 = 0.0f;
-      float v0 = 0.0f;
-      float u1 = 1.0f;
-      float v1 = 1.0f;
+      std::string path;
+      float width = static_cast<float>(HudPicture::character_size);
+      float height = width;
       if (is_letter)
       {
-        const std::int32_t letter = command.character & 255;
-        u0 = static_cast<float>(letter % 16) / 16.0f;
-        v0 = static_cast<float>(letter / 16) / 16.0f;
-        u1 = u0 + 1.0f / 16.0f;
-        v1 = v0 + 1.0f / 16.0f;
+        path = FindLetter(world, data, command.character & 255);
+      } else
+      {
+        const Known &known = Find(world, data, command.name);
+        path = known.path;
+        width = static_cast<float>(known.width);
+        height = static_cast<float>(known.height);
+      }
+      if (path.empty()) { continue; }
+
+      // from the screen of the original to the real one, see HudPicture
+      const auto x = static_cast<float>(command.x);
+      const auto y = static_cast<float>(command.y);
+      const auto across = static_cast<float>(view_width);
+      const auto down = static_cast<float>(view_height);
+      float by = scale;
+      float left = (across - 320.0f * scale) * 0.5f + x * scale;
+      float top = 0.0f;
+      switch (command.anchor)
+      {
+        case HudAnchor::Bottom: top = down - (200.0f - y) * scale;
+          break;
+        case HudAnchor::Center: top = (down - 200.0f * scale) * 0.5f + y * scale;
+          break;
+        case HudAnchor::TopLeft: by = notice_scale;
+          left = x * by;
+          top = y * by;
+          break;
+        case HudAnchor::MiddleSmall: by = notice_scale;
+          left = across * 0.5f + x * by;
+          top = down * 0.5f + y * by;
+          break;
       }
 
-      Mesh &mesh = meshes[std::string(name)];
-      const auto first = static_cast<std::uint32_t>(mesh.corners.size());
-      const float depth = -distance + nearer;
-      nearer += 0.000002f;
-      mesh.corners.push_back({{left, top, depth}, {0.0f, 0.0f, 1.0f}, {u0, v0}, {1.0f, 1.0f, 1.0f, 1.0f}});
-      mesh.corners.push_back({{left, bottom, depth}, {0.0f, 0.0f, 1.0f}, {u0, v1}, {1.0f, 1.0f, 1.0f, 1.0f}});
-      mesh.corners.push_back({{right, bottom, depth}, {0.0f, 0.0f, 1.0f}, {u1, v1}, {1.0f, 1.0f, 1.0f, 1.0f}});
-      mesh.corners.push_back({{right, top, depth}, {0.0f, 0.0f, 1.0f}, {u1, v0}, {1.0f, 1.0f, 1.0f, 1.0f}});
-      for (const std::uint32_t corner : {0u, 1u, 2u, 0u, 2u, 3u}) { mesh.indices.push_back(first + corner); }
+      // whole pixels, so that every pixel of a picture is as large as the
+      // next one wherever it can be
+      Slot wanted;
+      wanted.left = static_cast<std::int32_t>(std::round(left));
+      wanted.top = static_cast<std::int32_t>(std::round(top));
+      wanted.width = static_cast<std::int32_t>(std::round(left + width * by)) - wanted.left;
+      wanted.height = static_cast<std::int32_t>(std::round(top + height * by)) - wanted.top;
+      wanted.order = order++;
+
+      std::vector<Slot> &slots = _slots[path];
+      std::size_t &used = _used[path];
+      if (used == slots.size())
+      {
+        Slot made;
+        made.element = world.CreateUi(
+          "type: image\n"
+          "src: " + path + "\n"
+          "position: absolute\n"
+          "image_rendering: pixelated\n",
+          _holder);
+        if (made.element == 0) { return; }
+        made.is_visible = true;
+        // a place no picture has, so that all of it is set below
+        made.width = -1;
+        made.height = -1;
+        made.left = std::numeric_limits<std::int32_t>::min();
+        made.top = std::numeric_limits<std::int32_t>::min();
+        slots.push_back(made);
+      }
+
+      Slot &slot = slots[used];
+      used++;
+      if (slot.left != wanted.left)
+      {
+        slot.left = wanted.left;
+        world.SetUiStyle(slot.element, "left", to_length(slot.left));
+      }
+      if (slot.top != wanted.top)
+      {
+        slot.top = wanted.top;
+        world.SetUiStyle(slot.element, "top", to_length(slot.top));
+      }
+      if (slot.width != wanted.width)
+      {
+        slot.width = wanted.width;
+        world.SetUiStyle(slot.element, "width", to_length(slot.width));
+      }
+      if (slot.height != wanted.height)
+      {
+        slot.height = wanted.height;
+        world.SetUiStyle(slot.element, "height", to_length(slot.height));
+      }
+      if (slot.order != wanted.order)
+      {
+        slot.order = wanted.order;
+        world.SetUiStyle(slot.element, "z-index", std::to_string(slot.order));
+      }
+      if (!slot.is_visible)
+      {
+        slot.is_visible = true;
+        world.SetUiVisible(slot.element, true);
+      }
     }
 
-    for (auto &[name, mesh] : meshes)
+    // the images the list has no picture for
+    for (auto &[path, slots] : _slots)
     {
-      Entity &entity = _entities[name];
-      if (entity == 0)
+      for (std::size_t rest = _used[path]; rest < slots.size(); rest++)
       {
-        if (mesh.corners.empty()) { continue; }
+        if (!slots[rest].is_visible) { continue; }
 
-        entity = world.CreateEntity("hud " + name, camera);
-        world.AddComponent(entity, "Transform");
-        world.AddComponent(entity, "Renderable");
-        world.SetText(entity, world.FindField("Renderable", "shader"), GameShaders::surface);
-        world.SetText(entity, world.FindField("Renderable", "material.alpha_mode"), "blend");
-        world.SetTexts(entity, world.FindField("Renderable", "textures"), {Find(world, data, name).path});
-
-        // What is seen through is drawn from the farthest to the nearest, so
-        // the bars stand behind what is drawn on them, and the letters in
-        // front of everything.
-        const bool is_bar = name == "sbar" || name == "ibar" || name == "scorebar";
-        const float forward = is_bar ? 0.0f : name == HudPicture::characters_name ? 2.0f * layer_step : layer_step;
-        world.SetVector3(entity, world.FindField("Transform", "position"), {0.0f, 0.0f, forward});
+        slots[rest].is_visible = false;
+        world.SetUiVisible(slots[rest].element, false);
       }
-
-      if (mesh.corners.empty())
-      {
-        // a picture that is not shown for now: a speck behind the camera
-        mesh.corners = {
-          {{0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 0.0f}},
-          {{0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 0.0f}},
-          {{0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 0.0f}},
-        };
-        mesh.indices = {0, 1, 2};
-      }
-      world.SetMesh(entity, mesh.corners, mesh.indices);
     }
   }
 } // quake

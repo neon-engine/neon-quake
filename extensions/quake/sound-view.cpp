@@ -45,7 +45,7 @@ namespace quake
 
     world.AddComponent(entity, "SoundSource");
     world.SetText(entity, world.FindField("SoundSource", "sound"), path);
-    world.SetNumber(entity, world.FindField("SoundSource", "volume"), volume);
+    world.SetNumber(entity, world.FindField("SoundSource", "volume"), volume * _sound_volume);
     world.SetBoolean(entity, world.FindField("SoundSource", "looping"), loops);
     world.SetText(entity, world.FindField("SoundSource", "group"), loops ? "ambience" : "effects");
 
@@ -86,7 +86,7 @@ namespace quake
     if (path.empty() || volume <= 0.0f) { return; }
 
     const float far = wears_off > 0.0f ? reach / wears_off * QuakeSpace::metres_per_unit : 0.0f;
-    _playing.push_back({Make(world, name, path, place, volume, far, false), owner, channel, false});
+    _playing.push_back({Make(world, name, path, place, volume, far, false), owner, channel, false, volume});
   }
 
   void SoundView::PlayAmbient(
@@ -104,7 +104,7 @@ namespace quake
     // has it wear off three times as fast as an ordinary sound, so that it
     // is heard in its room and not in the level.
     const float far = wears_off > 0.0f ? reach / wears_off * QuakeSpace::metres_per_unit : 0.0f;
-    _playing.push_back({Make(world, name, path, place, volume, far, true), 0, 0, true});
+    _playing.push_back({Make(world, name, path, place, volume, far, true), 0, 0, true, volume});
   }
 
   void SoundView::PlayMusic(const World &world, const int track)
@@ -126,6 +126,25 @@ namespace quake
     world.SetText(_music, world.FindField("SoundSource", "sound"), path);
     world.SetBoolean(_music, world.FindField("SoundSource", "looping"), true);
     world.SetText(_music, world.FindField("SoundSource", "group"), "music");
+    world.SetNumber(_music, world.FindField("SoundSource", "volume"), _music_volume);
+  }
+
+  void SoundView::SetVolumes(const World &world, const float sounds, const float music)
+  {
+    const NeonField volume_field = world.FindField("SoundSource", "volume");
+    if (sounds != _sound_volume)
+    {
+      _sound_volume = sounds;
+      for (const Playing &playing : _playing)
+      {
+        world.SetNumber(playing.entity, volume_field, playing.volume * _sound_volume);
+      }
+    }
+    if (music != _music_volume)
+    {
+      _music_volume = music;
+      if (_music != 0) { world.SetNumber(_music, volume_field, _music_volume); }
+    }
   }
 
   void SoundView::Update(const World &world)

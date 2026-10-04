@@ -23,8 +23,10 @@ namespace quake
 
     /// How much of the screen the view takes, from 30 to 120 in steps of
     /// 10. From 110 on the bars of the status bar go away, see
-    /// StatusBarOptions::SizeOfViewSize().
-    float screen_size = 100.0f;
+    /// StatusBarOptions::SizeOfViewSize(). It starts with the status bar
+    /// alone, as the ports of today are mostly played; the original
+    /// started at 100, with the bar of what is carried above it.
+    float screen_size = 110.0f;
 
     /// The brightness, from 1, as the pictures are, down to 0.5, the
     /// brightest, in steps of 0.05. The screen calls it brightness, and

@@ -965,14 +965,28 @@ namespace quake
 
       StatusBarOptions options;
       options.shows_scores = _world->IsActionDown("scores");
+      options.size = StatusBarOptions::SizeOfViewSize(_options.screen_size);
       pictures = _status_bar.Layout(stats, time, options);
+
+      // the cross in the middle of the view, for as long as the player aims
+      if (!_menu.IsOpen() && stats.health > 0)
+      {
+        HudPicture cross;
+        cross.kind = HudPictureKind::Character;
+        cross.name = HudPicture::characters_name;
+        cross.character = '+';
+        cross.x = -HudPicture::character_size / 2;
+        cross.y = -HudPicture::character_size / 2;
+        cross.anchor = HudAnchor::MiddleSmall;
+        pictures.push_back(cross);
+      }
 
       // the lines the game code printed, the newest last, each for a while
       std::erase_if(_messages, [now](const Message &message) { return now - message.at > message_seconds; });
       std::int32_t line = 0;
       for (const Message &message : _messages)
       {
-        HudText::AddLine(pictures, message.text, 8, 4 + line * HudPicture::character_size, HudAnchor::Center);
+        HudText::AddLine(pictures, message.text, 8, line * HudPicture::character_size, HudAnchor::TopLeft);
         line++;
       }
     }
@@ -1002,11 +1016,10 @@ namespace quake
       pictures.insert(pictures.end(), menu.begin(), menu.end());
     }
 
-    _hud.Show(*_world, *_data, _camera, pictures);
+    _hud.Show(*_world, *_data, pictures);
 
     // The colour over the view: what the eyes are in, what the player
-    // carries, and the flashes, which fade. The engine multiplies light, and
-    // the colours are those a screen is given.
+    // carries, and the flashes, which fade.
     Vector eyes;
     FindEyes(eyes);
     _tint.SetContents(_level->collision.GetPointContents({eyes[0], eyes[1], eyes[2]}));
@@ -1014,14 +1027,11 @@ namespace quake
     _tint.Advance(_frame_time);
     if (_menu.IsOpen())
     {
-      _hud.ShowTint(*_world, _camera, {0.0f, 0.0f, 0.0f, 0.6f});
+      _hud.ShowTint(*_world, 0.0f, 0.0f, 0.0f, 0.6f);
       return;
     }
     const ViewTint::Colour tint = _tint.Mix();
-    _hud.ShowTint(*_world, _camera, {
-      std::pow(tint.red / 255.0f, 2.2f), std::pow(tint.green / 255.0f, 2.2f), std::pow(tint.blue / 255.0f, 2.2f),
-      tint.amount,
-    });
+    _hud.ShowTint(*_world, tint.red, tint.green, tint.blue, tint.amount);
   }
 
   void GameCode::ShowView(const float blend)
@@ -1239,6 +1249,14 @@ namespace quake
     _loading = std::move(game);
   }
 
+  void GameCode::ApplyOptions()
+  {
+    _sounds->SetVolumes(*_world, _options.sound_volume, _options.music_volume);
+
+    // the third of the game's numbers for its shaders, see quake.glsl
+    _world->SetShaderNumbers(2, {_options.gamma, 0.0f, 0.0f, 0.0f});
+  }
+
   void GameCode::Act(const std::vector<MenuAction> &actions)
   {
     for (const MenuAction &action : actions)
@@ -1251,6 +1269,7 @@ namespace quake
           break;
         case MenuActionKind::SetOption:
           _options.Set(action.name, action.value);
+          ApplyOptions();
           WriteOptions();
           break;
         case MenuActionKind::NewGame:
@@ -1407,6 +1426,7 @@ namespace quake
       // what the player saved and set in a run before
       ReadSaves();
       ReadOptions();
+      ApplyOptions();
       if (!_tours) { _menu.Open(); }
     }
     _was_started = true;
@@ -1595,6 +1615,7 @@ namespace quake
     // A model of the level no entity of the game code names is one that was
     // left out, for the skill that is played, and is not there.
     std::vector<bool> is_named(_level->file.models.size(), false);
+    std::vector<bool> is_set(_level->file.models.size(), false);
     for (const std::size_t part : _static_parts)
     {
       if (part < is_named.size()) { is_named[part] = true; }
@@ -1604,11 +1625,24 @@ namespace quake
       if (_level->machine.IsEntityFree(entity)) { continue; }
 
       const std::size_t part = read_part_number(_level->fields.model.GetText(_level->machine, entity));
-      if (part < is_named.size()) { is_named[part] = true; }
+      if (part >= is_named.size()) { continue; }
+
+      is_named[part] = true;
+      if (_level->fields.modelindex.Get(_level->machine, entity) != 0.0f) { is_set[part] = true; }
     }
     for (std::size_t part = 1; part < is_named.size(); part++)
     {
-      if (const Entity shown = view.FindPart(part); !is_named[part] && shown != 0) { world.DestroyEntity(shown); }
+      const Entity shown = view.FindPart(part);
+      if (shown == 0) { continue; }
+
+      // One that is named by an entity that never set it as its model is
+      // not seen for now: the bars of a gate that is open. It is kept out
+      // of sight, for the game code may set it later.
+      if (!is_named[part]) { world.DestroyEntity(shown); }
+      else if (!is_set[part] && !_static_parts.contains(part))
+      {
+        world.SetVector3(shown, _position_field, {0.0f, -10000.0f, 0.0f});
+      }
     }
 
     for (std::int32_t entity = 1; entity < _level->machine.GetEntityCount(); entity++) { Show(entity); }

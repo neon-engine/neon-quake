@@ -1,0 +1,35 @@
+# What the game shows over the world: a colour laid over the view, and on
+# top of it the pictures of the status bar, of the menus, and of the screens
+# between levels. The game makes an image for every picture it shows, inside
+# `quake-pictures`, see hud-view.cpp.
+#
+# The screen is 384 units high whatever its size, so a pixel of the pictures
+# is a little under three of a screen 1080 high, as the ports of today draw
+# them.
+
+ui: quake-hud
+version: 1
+reference_size: [683, 384]
+scale: height
+cancel: none
+
+root:
+  type: panel
+  width: 100%
+  height: 100%
+  children:
+    - type: panel
+      name: quake-tint
+      position: absolute
+      left: 0
+      top: 0
+      width: 100%
+      height: 100%
+
+    - type: panel
+      name: quake-pictures
+      position: absolute
+      left: 0
+      top: 0
+      width: 100%
+      height: 100%

@@ -668,7 +668,7 @@ namespace
     menu.Press(MenuKey::Down);
     EXPECT_THAT(
       menu.Press(MenuKey::Select, options),
-      ElementsAre(change_sound, set_option("viewsize", 110.0f), enter_sound));
+      ElementsAre(change_sound, set_option("viewsize", 120.0f), enter_sound));
   }
 
   TEST(MenuOptionsTest, SetsAnOptionByItsName)

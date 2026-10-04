@@ -14,28 +14,44 @@
 namespace quake
 {
   /// Draws what the game shows on top of the world: the status bar, the
-  /// counts of a level that is over, the words in the middle of the screen.
+  /// counts of a level that is over, the words in the middle of the screen,
+  /// the menus.
   ///
   /// It is handed a list of pictures with their places on the screen of the
-  /// original, 320 by 200, and shows them on a plane that stands right in
-  /// front of the camera and moves with it: a square for every picture,
-  /// those of the same picture in one mesh. The pictures are those of
+  /// original, 320 by 200, and shows them with the user interface of the
+  /// engine: the file `hud.ui.yml`, and in it an image for every picture of
+  /// the list, in the order of the list. The pictures are those of
   /// `gfx.wad` and of the `gfx/` folder of the data, handed to the renderer
-  /// the first time each is shown.
+  /// the first time each is shown. A letter is a picture of its own, cut
+  /// out of the sheet of letters.
   ///
-  /// The bar is drawn as the ports of today draw it: three times as large
-  /// on a screen 1080 pixels high, standing in the middle of the lower
-  /// edge. What is anchored to the middle is in the middle of the screen.
-  /// Nothing is made anew while the list stays the same.
+  /// The screen counts as 384 pixels of the original high, as the ports of
+  /// today draw it, and every picture starts and ends on a whole pixel of
+  /// the real screen. An image is only told what changed about it.
   class HudView
   {
-    /// A picture that was handed to the renderer: where a material reads it
+    /// A picture that was handed to the renderer: where an image reads it
     /// from, and its size in its own pixels.
     struct Known
     {
       std::string path;
       std::int32_t width = 0;
       std::int32_t height = 0;
+    };
+
+    /// An image of the user interface, and where it was last told to be.
+    struct Slot
+    {
+      neon::extension::UiElement element = 0;
+
+      /// Its place among the images, later ones over earlier ones.
+      std::int32_t order = -1;
+
+      std::int32_t left = 0;
+      std::int32_t top = 0;
+      std::int32_t width = 0;
+      std::int32_t height = 0;
+      bool is_visible = false;
     };
 
     // the archive of pictures of the status bar, once it was read
@@ -46,51 +62,57 @@ namespace quake
     // the pictures by their names; one that is not there has no path
     std::map<std::string, Known, std::less<>> _pictures;
 
-    // the entity that shows the squares of each picture, by its name
-    std::map<std::string, neon::extension::Entity, std::less<>> _entities;
+    // the letters of the sheet that were cut out, by their number
+    std::map<std::int32_t, std::string> _letters;
 
-    // the camera the plane stands in front of
-    neon::extension::Entity _camera = 0;
+    // whether the file is shown, and the two elements of it
+    bool _is_open = false;
+    neon::extension::UiElement _tint = 0;
+    neon::extension::UiElement _holder = 0;
 
-    // the entity that lays a colour over the view, the camera it stands in
-    // front of, and the colour it has
-    neon::extension::Entity _tint = 0;
-    neon::extension::Entity _tint_camera = 0;
-    NeonColor _tint_colour{0.0f, 0.0f, 0.0f, 0.0f};
+    // the colour that lies over the view
+    std::string _tint_colour;
 
-    // what is shown, to tell when it has to be made anew
+    // The images, by the picture they show: as many of each as a list had
+    // of it at once. An image keeps its picture and is told its place and
+    // its turn among the others, which is less to say than a picture.
+    std::map<std::string, std::vector<Slot>, std::less<>> _slots;
+
+    // how many of the images of each picture a list uses, while it is shown
+    std::map<std::string, std::size_t, std::less<>> _used;
+
+    // what is shown, and the size of the screen it was laid out for, to
+    // tell when it has to be laid out anew
     std::vector<HudPicture> _shown;
-
-    /// How far in front of the camera the plane stands, in metres: behind
-    /// what the camera leaves out as too near, and before everything else.
-    static constexpr float distance = 0.06f;
-
-    /// How much nearer to the camera a layer of pictures stands than the one
-    /// behind it, in metres.
-    static constexpr float layer_step = 0.0005f;
+    int _view_width = 0;
+    int _view_height = 0;
 
     /// How many pixels of the original the screen is high. The original is
-    /// 200; more makes everything smaller, as a larger screen does.
-    static constexpr float screen_height = 360.0f;
+    /// 200; more makes everything smaller, as a larger screen does. It is
+    /// what `reference_size` of the file says.
+    static constexpr float screen_height = 384.0f;
 
-    /// From top to bottom, how much the camera of the game sees, in degrees.
-    static constexpr float field_of_view = 73.74f;
+    /// How many pixels high a screen is for each pixel of the lines at its
+    /// top, which are drawn smaller than the rest, as a console is.
+    static constexpr float notice_height = 540.0f;
 
     const Known &Find(const neon::extension::World &world, const GameData &data, std::string_view name);
 
-  public:
-    /// Shows a list of pictures in front of a camera. An empty list shows
-    /// nothing.
-    void Show(
-      const neon::extension::World &world,
-      const GameData &data,
-      neon::extension::Entity camera,
-      const std::vector<HudPicture> &pictures);
+    const std::string &FindLetter(const neon::extension::World &world, const GameData &data, std::int32_t letter);
 
-    /// Lays a colour over everything the camera sees, behind the pictures:
-    /// red, green, and blue as the engine multiplies light, and how much of
-    /// it, from 0 for none to 1 for nothing else.
-    void ShowTint(const neon::extension::World &world, neon::extension::Entity camera, const NeonColor &colour);
+    bool Open(const neon::extension::World &world);
+
+  public:
+    /// The file of the user interface the pictures are shown in.
+    static constexpr const char *file = "extensions://quake/assets/ui/hud.ui.yml";
+
+    /// Shows a list of pictures. An empty list shows nothing.
+    void Show(const neon::extension::World &world, const GameData &data, const std::vector<HudPicture> &pictures);
+
+    /// Lays a colour over everything of the world, behind the pictures:
+    /// red, green, and blue from 0 to 255 as a screen is given them, and
+    /// how much of it, from 0 for none to 1 for nothing else.
+    void ShowTint(const neon::extension::World &world, float red, float green, float blue, float amount);
 
     /// The size of a picture of a name in its own pixels, for laying out
     /// what depends on it. Zero for one that is not there.

@@ -16,6 +16,15 @@ namespace quake
     /// In the middle both ways: the screen between two levels, and text
     /// in the middle of the view.
     Center,
+
+    /// From the upper left corner of the real screen, and smaller than the
+    /// rest, as the console of the original is: the lines the game tells
+    /// the player. x and y count from that corner.
+    TopLeft,
+
+    /// From the middle of the real screen, as small as `TopLeft`: the
+    /// cross a player aims with. x and y count from the middle.
+    MiddleSmall,
   };
 } // quake
 
