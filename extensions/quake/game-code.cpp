@@ -567,7 +567,8 @@ namespace quake
     {
       const neon::extension::Vector2 look = world.ActionAxis2("look");
       _view_yaw = wrap_angle(_view_yaw - look.x * look_speed);
-      _view_pitch = std::clamp(_view_pitch + look.y * look_speed, most_pitch_up, most_pitch_down);
+      // `look` counts up as more, and the game counts down as more
+      _view_pitch = std::clamp(_view_pitch - look.y * look_speed, most_pitch_up, most_pitch_down);
     }
 
     for (int weapon = 1; weapon <= 8; weapon++)
