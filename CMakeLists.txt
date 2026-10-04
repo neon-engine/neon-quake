@@ -45,11 +45,16 @@ set_target_properties(quake-formats PROPERTIES POSITION_INDEPENDENT_CODE ON)
 neon_add_project(quake
         SOURCES
         extensions/quake/quake.cpp
+        extensions/quake/game-data.cpp
+        extensions/quake/game-data.hpp
+        extensions/quake/level-view.cpp
+        extensions/quake/level-view.hpp
 )
 target_link_libraries(quake-extension PRIVATE quake-formats)
 
-set(QUAKE_TEST_DATA_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/../LibreQuake/lq1" CACHE PATH
-        "A folder of game data to test the formats with, such as lq1 of a checkout of LibreQuake. Optional")
+
+set(QUAKE_TEST_DATA_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/extensions/quake/assets/id1" CACHE PATH
+        "A folder of game data to test the formats with: the data this repository carries, or lq1 of a checkout of LibreQuake")
 
 # Tests of the formats. They need GoogleTest, which is taken from the engine's
 # checkout as sources; nothing of the engine itself is built. `ctest` runs
@@ -74,9 +79,9 @@ if (QUAKE_BUILD_TESTS AND EXISTS "${NEON_ENGINE_DIRECTORY}/external/googletest/C
     add_executable(${TEST_TARGET} EXCLUDE_FROM_ALL "${TEST_SOURCE}")
     target_compile_options(${TEST_TARGET} PRIVATE -Wall -Wextra -Werror -Wno-unused-parameter)
     target_link_libraries(${TEST_TARGET} PRIVATE GTest::gmock_main quake-formats)
-    # Where data to test with may be found on this machine: a checkout of
-    # LibreQuake, whose data is free. A test that wants it skips itself when
-    # it is not there; nothing of it is ever committed here.
+    # Where data to test with is found: the data this repository carries,
+    # unless the build says otherwise. A test that wants a file that is not
+    # there skips itself.
     target_compile_definitions(${TEST_TARGET} PRIVATE
             QUAKE_TEST_DATA_DIRECTORY="${QUAKE_TEST_DATA_DIRECTORY}")
     add_dependencies(quake-tests ${TEST_TARGET})

@@ -5,9 +5,10 @@ loaded, and its game code interpreted, by a native extension. It is the
 proof that the engine can be extended from outside, and that a game can be
 made on it without touching the engine. The engine knows nothing of Quake.
 
-**Where this stands.** A project and an extension that starts and looks for
-the data, and the beginning of the formats: the reader of bytes and the
-palette. Nothing of the data is shown yet.
+**Where this stands.** The extension reads the archives of the game and shows
+a level: its walls, floors, and ceilings with their textures, seen from where
+a player starts, by a camera that flies. The level is not lit by its
+lightmaps yet, nothing can be walked on, and nothing in it moves.
 
 ## What it is made of
 
@@ -16,15 +17,20 @@ assets/project.yml          the project: its name, and the scene it starts with
 extensions/quake/
   extension.yml             the recipe of the extension
   quake.cpp                 its code: what it brings to the engine
+  game-data.hpp/.cpp        the archives of the game, and its palette
+  level-view.hpp/.cpp       a level shown in the world of the engine
   formats/                  the formats of the game's data, read from bytes
-  assets/                   its scenes, and whatever else it brings
+  assets/                   its scenes, and the data of the game under id1/
 ```
 
 `formats/` knows nothing of the engine: an archive, a picture, a level, a
 model, the game code, each read from bytes in memory into plain structs. It is
 a library of its own, `quake-formats`, which the extension links, and which
 is tested without the engine. `quake.cpp` and what joins it turn what the
-formats read into entities, meshes, and textures of the engine.
+formats read into entities, meshes, and textures of the engine. The game
+counts in units of its own with z up, and winds its triangles the other way
+than the engine; `formats/quake-space.hpp` is the one place that turns it
+over, a unit being a thirty-second of a metre.
 
 It is a project with an extension, see
 [projects.md](../neon-engine/docs/projects.md#a-project-with-code-in-c) and
@@ -52,17 +58,26 @@ project's `project.yml` on top, and `extensions/quake/`.
 
 ## The data of the game
 
-The data is not ours and is never committed. The extension reads the
-player's own copy from `id1` under its assets next to the runtime, as
-`extensions://quake/assets/id1/pak0.pak`:
+The repository carries a game to run: the data of
+[LibreQuake](https://github.com/lavenderdotpet/LibreQuake) 0.9, a free game
+made for this engine's kind, under `extensions/quake/assets/id1/`, kept by
+Git LFS. Its maps, models, textures, and sounds are under the BSD 3-clause
+licence, and its game code, `progs.dat` inside `pak0.pak`, and `pop.lmp`
+under the GPL 2; the notices are next to the data, in `id1/docs/`, and stay
+with it.
 
-```
-build/quake/extensions/quake/assets/id1/pak0.pak
+```sh
+git lfs install
+git lfs pull
 ```
 
-Without it the game starts and says that it is missing. An archive is read as
-the file it is and taken apart by the extension; the engine knows nothing of
-archives.
+The extension reads it as `extensions://quake/assets/id1/pak0.pak`,
+`pak1.pak`, and so on, each archive as the file it is, and takes it apart
+itself; the engine knows nothing of archives. Whoever owns the original game
+puts its `id1` in place of this one, on their own machine. The original's
+data is not ours and is never committed.
+
+Without any data the game starts and says that it is missing.
 
 ## Tests
 
@@ -76,10 +91,10 @@ ctest --test-dir build
 ```
 
 The tests make the bytes they read themselves. One that wants real data
-looks for it in `QUAKE_TEST_DATA_DIRECTORY`, by default `../LibreQuake/lq1`,
-a checkout of [LibreQuake](https://github.com/lavenderdotpet/LibreQuake),
-whose data is free, and skips itself when it is not there. Nothing of it is
-committed here.
+looks for it in `QUAKE_TEST_DATA_DIRECTORY`, by default the data this
+repository carries, and skips itself when the file it wants is not there as
+a file of its own: the levels under `id1/maps` are, what is inside the
+archives is not. A checkout of LibreQuake has the rest loose, under `lq1`.
 
 ## How it is written
 
