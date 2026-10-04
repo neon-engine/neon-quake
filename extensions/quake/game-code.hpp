@@ -31,6 +31,7 @@
 #include "game/qc-globals.hpp"
 #include "game/qc-host.hpp"
 #include "game/qc-world-builtins.hpp"
+#include "game/saved-game.hpp"
 #include "game/server-message-listener.hpp"
 #include "game/server-message-reader.hpp"
 #include "game/status-bar.hpp"
@@ -147,6 +148,28 @@ namespace quake
     // whether the game was started before: the first time, its menu is open,
     // as the original greets a player with it
     bool _was_started = false;
+
+    /// How many games can be kept, as the menu of the original has places.
+    static constexpr std::size_t save_slots = 12;
+
+    // The games that were saved, each as the text the original writes for
+    // one, and what the menu calls each. They are kept while the game runs
+    // and no longer: an extension cannot write a file yet.
+    std::array<std::string, save_slots> _saves;
+    std::array<std::string, save_slots> _save_names;
+
+    // The saved game that is being gone back to, while its level starts.
+    std::unique_ptr<SavedGame> _loading;
+
+    // the numbers the player came into the level with, as the game code had
+    // them when the player came in: what a saved game keeps of the player
+    std::array<float, 16> _came_with{};
+
+    /// Keeps the game as it is in a place of the menu.
+    void Save(std::size_t slot);
+
+    /// Goes back to the game kept in a place of the menu.
+    void Load(std::size_t slot);
 
     /// Does what the menu asks for: plays its sounds, takes its settings,
     /// starts a game, leaves.

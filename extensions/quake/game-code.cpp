@@ -16,6 +16,8 @@
 #include "game/intermission.hpp"
 #include "game/level-spawning.hpp"
 #include "game/player-stats.hpp"
+#include "game/saved-game-capture.hpp"
+#include "game/saved-game-text.hpp"
 #include "game/qc-builtin-number.hpp"
 #include "game/qc-flag.hpp"
 #include "game/qc-move-type.hpp"
@@ -1103,7 +1105,67 @@ namespace quake
     MenuGame game;
     game.is_running = _level != nullptr;
     game.is_in_intermission = _is_over;
+    for (std::size_t slot = 0; slot < save_slots; slot++) { game.slots[slot] = _save_names[slot]; }
     return game;
+  }
+
+  void GameCode::Save(const std::size_t slot)
+  {
+    // as the original: only a game that runs, of a player who lives
+    if (slot >= save_slots || _level == nullptr || _is_over ||
+        _level->fields.health.Get(_level->machine, player_entity) <= 0.0f)
+    {
+      return;
+    }
+
+    QcMachine &machine = _level->machine;
+
+    // maps/start.bsp is saved as start
+    std::string name = _map;
+    if (const std::size_t slash = name.rfind('/'); slash != std::string::npos) { name.erase(0, slash + 1); }
+    if (name.ends_with(".bsp")) { name.erase(name.size() - 4); }
+
+    SavedGame head;
+    head.comment = SavedGameText::MakeComment(
+      _level->fields.message.GetText(machine, 0),
+      static_cast<int>(_level->globals.killed_monsters.Get(machine)),
+      static_cast<int>(_level->globals.total_monsters.Get(machine)));
+    head.parms = _came_with;
+    head.skill = static_cast<int>(_level->builtins.GetVariables().GetFloat("skill"));
+    head.map_name = name;
+    head.time = _level->running.GetTime();
+    for (std::size_t style = 0; style < head.light_styles.size(); style++)
+    {
+      head.light_styles[style] = std::string(_level->builtins.GetLightStyle(static_cast<std::int32_t>(style)));
+    }
+
+    _saves[slot] = SavedGameText::Write(SavedGameCapture::Capture(machine, std::move(head)));
+
+    // the menu shows the name with its spaces
+    std::string shown = SavedGameText::MakeComment(
+      _level->fields.message.GetText(machine, 0),
+      static_cast<int>(_level->globals.killed_monsters.Get(machine)),
+      static_cast<int>(_level->globals.total_monsters.Get(machine)));
+    std::replace(shown.begin(), shown.end(), '_', ' ');
+    _save_names[slot] = shown;
+    _world->Info("The game is kept in place " + std::to_string(slot + 1) + ", until the game is left");
+  }
+
+  void GameCode::Load(const std::size_t slot)
+  {
+    if (slot >= save_slots || _saves[slot].empty()) { return; }
+
+    auto game = std::make_unique<SavedGame>();
+    if (std::string problem; !SavedGameText::Read(_saves[slot], *game, problem))
+    {
+      _world->Error("The game kept in place " + std::to_string(slot + 1) + " cannot be read: " + problem);
+      return;
+    }
+
+    // its level is started as for a new game, and then made what it was
+    _wanted_map = "maps/" + game->map_name + ".bsp";
+    _wanted_parms.assign(game->parms.begin(), game->parms.end());
+    _loading = std::move(game);
   }
 
   void GameCode::Act(const std::vector<MenuAction> &actions)
@@ -1131,8 +1193,10 @@ namespace quake
           _world->Info("The game is left from its menu");
           std::_Exit(0);
         case MenuActionKind::LoadGame:
+          Load(static_cast<std::size_t>(action.slot));
+          break;
         case MenuActionKind::SaveGame:
-          _world->Info("Saved games are not there yet");
+          Save(static_cast<std::size_t>(action.slot));
           break;
         default:
           break;
@@ -1376,6 +1440,8 @@ namespace quake
     LevelSpawningSettings settings;
     settings.map_name = name;
     settings.model_name = map;
+    // a game that is gone back to is played at the skill it was saved at
+    if (_loading != nullptr) { _level->builtins.GetVariables().SetFloat("skill", static_cast<float>(_loading->skill)); }
     settings.skill = static_cast<int>(_level->builtins.GetVariables().GetFloat("skill"));
     settings.server_flags = _server_flags;
 
@@ -1387,7 +1453,16 @@ namespace quake
       world.Warn("The game code failed making " + failure.classname + ": " + failure.error.message);
     }
 
-    _level->running.ConnectClient(player_entity, "player", _start_parms);
+    // A player comes into a level, with the numbers brought along. One who
+    // goes back to a saved game does not: that player is in the saved game.
+    if (_loading == nullptr)
+    {
+      _level->running.ConnectClient(player_entity, "player", _start_parms);
+      for (std::size_t parm = 0; parm < _came_with.size(); parm++)
+      {
+        _came_with[parm] = _level->globals.parms[parm].Get(_level->machine);
+      }
+    }
 
     // the music of the level, which the level names by a number
     _sounds->PlayMusic(world, static_cast<int>(_level->fields.sounds.Get(_level->machine, 0)));
@@ -1395,8 +1470,44 @@ namespace quake
     // The original lets two steps pass before a player sees the level, in
     // which what was made settles: doors find their other halves, items
     // come to lie.
+    // no player is in the level yet when a saved game is gone back to
+    if (_loading != nullptr) { _level->running.SetClientCount(0); }
     _level->running.Advance(0.1f);
     _level->running.Advance(0.1f);
+
+    // A saved game: the level was started as for a new game, which made what
+    // a level leaves behind for good and named its models and sounds in the
+    // same order. Now every entity and every global is made what it was.
+    if (_loading != nullptr)
+    {
+      const std::unique_ptr<SavedGame> game = std::move(_loading);
+      for (std::size_t style = 0; style < game->light_styles.size(); style++)
+      {
+        _level->builtins.RestoreLightStyle(static_cast<std::int32_t>(style), game->light_styles[style]);
+      }
+
+      if (std::string problem; !SavedGameCapture::Restore(*game, _level->machine, problem))
+      {
+        world.Error("The saved game cannot be gone back to, and its level starts anew: " + problem);
+        _level->running.ConnectClient(player_entity, "player", _start_parms);
+      } else
+      {
+        for (std::int32_t entity = 0; entity < _level->machine.GetEntityCount(); entity++)
+        {
+          if (!_level->machine.IsEntityFree(entity)) { _level->collision.Link(entity); }
+        }
+        _level->running.SetTime(game->time);
+        _came_with = game->parms;
+        _server_flags = _level->globals.serverflags.Get(_level->machine);
+
+        // the player looks where the player looked
+        const Vector looked = _level->fields.v_angle.Get(_level->machine, player_entity);
+        _view_pitch = looked[0];
+        _view_yaw = looked[1];
+        _level->fields.fixangle.Set(_level->machine, player_entity, 0.0f);
+      }
+    }
+    _level->running.SetClientCount(1);
 
     // A model of the level no entity of the game code names is one that was
     // left out, for the skill that is played, and is not there.
