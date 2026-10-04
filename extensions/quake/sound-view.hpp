@@ -57,10 +57,6 @@ namespace quake
     /// How far a sound that wears off by 1 is heard, in units of the game.
     static constexpr float reach = 1000.0f;
 
-    /// By how much less a sound of the surroundings wears off than one that
-    /// is played, for the same number.
-    static constexpr float ambient_reach = 64.0f;
-
     /// The path of a sound by its name, such as `doors/drclos4.wav`,
     /// handing it to the audio when it was not yet.
     const std::string &Find(const neon::extension::World &world, const GameData &data, const std::string &name);
