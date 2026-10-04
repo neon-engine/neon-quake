@@ -49,7 +49,7 @@ namespace quake
     static constexpr std::int32_t main_items = 5;
     static constexpr std::int32_t single_player_items = 3;
     static constexpr std::int32_t multiplayer_items = 3;
-    static constexpr std::int32_t option_items = 7;
+    static constexpr std::int32_t option_items = 8;
     static constexpr std::int32_t help_pages = 6;
 
     /// How many letters of what a saved game says about itself are

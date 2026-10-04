@@ -224,13 +224,17 @@ namespace quake
         // it back once it told the players of it.
         fields.effects.Set(machine, entity, static_cast<float>(effects & ~muzzle_flash_effect));
       }
+      // A light that is carried is steady. The original has it reach
+      // another distance in every frame it draws, which at the pace of the
+      // steps of the world is a floor that flickers under who carries the
+      // quad damage.
       if ((effects & bright_light_effect) != 0)
       {
-        _lights.Flash(entity, {origin[0], origin[1], origin[2] + 16.0f}, 400.0f + _lights.Flicker(), carried_light_seconds);
+        _lights.Flash(entity, {origin[0], origin[1], origin[2] + 16.0f}, 416.0f, carried_light_seconds);
       }
       if ((effects & dim_light_effect) != 0)
       {
-        _lights.Flash(entity, origin, 200.0f + _lights.Flicker(), carried_light_seconds);
+        _lights.Flash(entity, origin, 216.0f, carried_light_seconds);
       }
       if (is_rocket) { _lights.Flash(entity, origin, 200.0f, carried_light_seconds); }
     }
@@ -656,7 +660,11 @@ namespace quake
       model = fields.model.GetText(machine, entity);
     }
 
-    if (model != shown.model)
+    // another skin is shown by another entity, as another model is: the
+    // engine draws an entity with the textures it had when it was first
+    // drawn, see neon-engine#402
+    const auto wanted_skin = static_cast<std::int32_t>(fields.skin.Get(machine, entity));
+    if (model != shown.model || (shown.is_alias && wanted_skin != shown.skin))
     {
       // a model of the level that is not named for a while is kept, out of
       // sight, since it cannot be made again
@@ -669,6 +677,7 @@ namespace quake
       }
       if (!shown.is_part) { Hide(shown); }
       shown.model = std::string(model);
+      shown.skin = wanted_skin;
       shown.is_placed = false;
 
       if (const std::size_t part = read_part_number(model); part > 0)
@@ -944,6 +953,16 @@ namespace quake
     // what the player holds down, and what was asked for once
     fields.button0.Set(machine, player_entity, _world->IsActionDown("fire") ? 1.0f : 0.0f);
     fields.button2.Set(machine, player_entity, _world->IsActionDown("jump") ? 1.0f : 0.0f);
+    // For checking the game without a window: the impulses the environment
+    // names in QUAKE_IMPULSES, such as `9,255` for every weapon and then the
+    // quad damage of the game code's cheats, one in a step, once the level
+    // has run for a second.
+    if (_impulse == 0.0f && !_scripted_impulses.empty() && _level->running.GetTime() > 1.0)
+    {
+      _impulse = _scripted_impulses.front();
+      _scripted_impulses.erase(_scripted_impulses.begin());
+    }
+
     if (_impulse != 0.0f)
     {
       fields.impulse.Set(machine, player_entity, _impulse);
@@ -1347,6 +1366,7 @@ namespace quake
     add(MenuOptions::screen_size_name, _options.screen_size);
     add(MenuOptions::gamma_name, _options.gamma);
     add(MenuOptions::mouse_speed_name, _options.mouse_speed);
+    add(MenuOptions::stick_speed_name, _options.stick_speed);
     add(MenuOptions::music_volume_name, _options.music_volume);
     add(MenuOptions::sound_volume_name, _options.sound_volume);
     add(MenuOptions::always_run_name, _options.always_run ? 1.0f : 0.0f);
@@ -1417,6 +1437,19 @@ namespace quake
     _wanted_map = "maps/" + game->map_name + ".bsp";
     _wanted_parms.assign(game->parms.begin(), game->parms.end());
     _loading = std::move(game);
+  }
+
+  void GameCode::ReadScriptedImpulses()
+  {
+    _scripted_impulses.clear();
+    const char *named = std::getenv("QUAKE_IMPULSES");
+    if (named == nullptr) { return; }
+
+    std::istringstream numbers(named);
+    for (std::string number; std::getline(numbers, number, ',');)
+    {
+      if (const float impulse = std::strtof(number.c_str(), nullptr); impulse > 0.0f) { _scripted_impulses.push_back(impulse); }
+    }
   }
 
   void GameCode::ApplyOptions()
@@ -1507,10 +1540,14 @@ namespace quake
       // as fast as the menu says, 3 being as it is, and the other way up
       // and down for who wants it
       const float speed = look_speed * _options.mouse_speed / 3.0f;
+      // the stick of a controller, which has a speed of its own
+      const neon::extension::Vector2 stick = world.ActionAxis2("look-stick");
+      const float stick_speed = look_speed * _options.stick_speed / 3.0f;
       const float up = _options.invert_mouse ? -1.0f : 1.0f;
-      _view_yaw = wrap_angle(_view_yaw - look.x * speed);
+      _view_yaw = wrap_angle(_view_yaw - look.x * speed - stick.x * stick_speed);
       // `look` counts up as more, and the game counts down as more
-      _view_pitch = std::clamp(_view_pitch - look.y * speed * up, most_pitch_up, most_pitch_down);
+      _view_pitch = std::clamp(
+        _view_pitch - (look.y * speed + stick.y * stick_speed) * up, most_pitch_up, most_pitch_down);
     }
 
     for (int weapon = 1; weapon <= 8; weapon++)
@@ -1543,8 +1580,21 @@ namespace quake
       return;
     }
 
+    // Another weapon is another entity: the engine draws an entity with
+    // the textures it had when it was first drawn, see neon-engine#402.
+    if (_weapon != 0 && model != _weapon_model)
+    {
+      _models->Forget(_weapon);
+      _world->DestroyEntity(_weapon);
+      _weapon = 0;
+    }
+
     const bool is_new = _weapon == 0;
-    if (is_new) { _weapon = _world->CreateEntity("weapon", _camera); }
+    if (is_new)
+    {
+      _weapon = _world->CreateEntity("weapon " + std::to_string(++_made), _camera);
+      _weapon_model = model;
+    }
 
     const auto frame = static_cast<std::int32_t>(fields.weaponframe.Get(machine, player_entity));
     // lit by the floor the player stands on, and never all dark
@@ -1649,6 +1699,7 @@ namespace quake
   bool GameCode::Run(std::string &error)
   {
     const World &world = *_world;
+    ReadScriptedImpulses();
     const GameData &data = *_data;
     LevelView &view = *_view;
     const std::string &map = _map;

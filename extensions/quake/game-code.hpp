@@ -112,6 +112,9 @@ namespace quake
       /// Whether it is a model of the kind ModelView shows.
       bool is_alias = false;
 
+      /// The skin its entity was made to show.
+      std::int32_t skin = 0;
+
       /// Whether it is a sprite, which SpriteView shows and turns.
       bool is_sprite = false;
 
@@ -186,6 +189,10 @@ namespace quake
     /// Makes what the options say so: how loud the sounds and the music
     /// are, and how bright the game is shown.
     void ApplyOptions();
+
+    /// Reads the impulses the environment names for a run without a
+    /// player, see SteerPlayer().
+    void ReadScriptedImpulses();
 
     /// Adds the pictures of the menu to a list, while it is open.
     void AddMenu(std::vector<HudPicture> &pictures);
@@ -294,6 +301,9 @@ namespace quake
     std::vector<std::string> _demo_names;
     std::size_t _next_demo = 0;
 
+    // impulses the environment asked for, which are given one in a step
+    std::vector<float> _scripted_impulses;
+
     // whether the camera is told the effect of a view in a liquid, and
     // whether it was told anything yet
     bool _is_under = false;
@@ -365,6 +375,7 @@ namespace quake
     // weapon in the player's hands.
     neon::extension::Entity _camera = 0;
     neon::extension::Entity _weapon = 0;
+    std::string _weapon_model;
 
     // What the player asked for since the last step: the number of a
     // weapon, which the game code is handed once.

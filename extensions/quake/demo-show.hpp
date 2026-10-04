@@ -39,6 +39,7 @@ namespace quake
       std::string model;
       bool is_part = false;
       bool is_alias = false;
+      std::int32_t skin = 0;
       bool is_sprite = false;
 
       /// Whether the recording named it in the frame that is shown.

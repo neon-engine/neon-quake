@@ -332,31 +332,48 @@ namespace quake
         if (!picture.glow.empty()) { world.SetText(entity, glow_field, picture.glow); }
 
         // A texture that changes: the pictures of its run, and of its
-        // second run. When any of them glows, each has a glow, so that one
-        // that does not takes away the glow of the one before.
+        // second run, shown through a picture of the entity's own. When any
+        // of them glows, each has a glow, so that one that does not takes
+        // away the glow of the one before.
         if (const TextureAnimation run = TextureAnimation::Find(level.textures, group.texture); !is_item && run.Changes())
         {
-          ChangingTexture changing;
-          changing.entity = entity;
-          changing.model = model;
-          for (const std::int32_t frame : run.frames)
+          const auto make = [&level, &data](const std::int32_t texture)
           {
-            changing.frames.push_back(FindPicture(world, data, level, item, frame));
-          }
-          for (const std::int32_t frame : run.alternate)
-          {
-            changing.alternate.push_back(FindPicture(world, data, level, item, frame));
-          }
+            Frame frame;
+            if (texture < 0 || static_cast<std::size_t>(texture) >= level.textures.size() ||
+                !level.textures[texture].has_value())
+            {
+              return frame;
+            }
+            const MipTexture &source = *level.textures[texture];
+            frame.width = source.width;
+            frame.height = source.height;
+            frame.pixels = data.GetPalette().ToRgba(source.pixels[0], source.HasHoles());
+            frame.glow = data.GetPalette().ToGlowRgba(source.pixels[0], source.HasHoles());
+            return frame;
+          };
 
-          const auto glows = [](const Pictures &pictures) { return !pictures.glow.empty(); };
+          ChangingTexture changing;
+          changing.model = model;
+          for (const std::int32_t frame : run.frames) { changing.frames.push_back(make(frame)); }
+          for (const std::int32_t frame : run.alternate) { changing.alternate.push_back(make(frame)); }
+
+          const auto glows = [](const Frame &frame) { return !frame.glow.empty(); };
           changing.glows = std::ranges::any_of(changing.frames, glows) || std::ranges::any_of(changing.alternate, glows);
-          if (changing.glows)
+
+          const Frame &first = changing.frames.front();
+          if (!first.pixels.empty())
           {
-            if (_no_glow.empty()) { _no_glow = world.SetImage("textures/no-glow", 1, 1, {0, 0, 0, 0}); }
-            for (Pictures &pictures : changing.frames) { if (pictures.glow.empty()) { pictures.glow = _no_glow; } }
-            for (Pictures &pictures : changing.alternate) { if (pictures.glow.empty()) { pictures.glow = _no_glow; } }
+            changing.name = "textures/changing-" + std::to_string(++_changing_made);
+            world.SetTexts(
+              entity, textures_field, {world.SetImage(changing.name, first.width, first.height, first.pixels)});
+            if (changing.glows)
+            {
+              changing.glow_name = changing.name + "/glow";
+              world.SetText(entity, glow_field, world.SetImage(changing.glow_name, 1, 1, {0, 0, 0, 0}));
+            }
+            _changing_textures.push_back(std::move(changing));
           }
-          _changing_textures.push_back(std::move(changing));
         }
 
         // A liquid is seen through as much as the level says: its colour is
@@ -550,22 +567,26 @@ namespace quake
 
   void LevelView::UpdateTextures(const World &world, const double time)
   {
-    if (_changing_textures.empty()) { return; }
-
-    const NeonField textures_field = world.FindField("Renderable", "textures");
-    const NeonField glow_field = world.FindField("Renderable", "material.emissive_texture");
     for (ChangingTexture &changing : _changing_textures)
     {
       const auto frame = _part_frames.find(changing.model);
       const bool shows_alternate = !changing.alternate.empty() && frame != _part_frames.end() && frame->second != 0;
-      const std::vector<Pictures> &run = shows_alternate ? changing.alternate : changing.frames;
+      const std::vector<Frame> &run = shows_alternate ? changing.alternate : changing.frames;
       const std::size_t index = TextureAnimation::ChooseFrame(run.size(), time);
       if (run.empty() || (index == changing.shown && shows_alternate == changing.shows_alternate)) { continue; }
 
       changing.shown = index;
       changing.shows_alternate = shows_alternate;
-      if (!run[index].path.empty()) { world.SetTexts(changing.entity, textures_field, {run[index].path}); }
-      if (changing.glows) { world.SetText(changing.entity, glow_field, run[index].glow); }
+
+      // the picture of the entity, with the pixels of this frame
+      const Frame &shown = run[index];
+      if (shown.pixels.empty()) { continue; }
+
+      (void) world.SetImage(changing.name, shown.width, shown.height, shown.pixels);
+      if (!changing.glows) { continue; }
+
+      if (shown.glow.empty()) { (void) world.SetImage(changing.glow_name, 1, 1, {0, 0, 0, 0}); }
+      else { (void) world.SetImage(changing.glow_name, shown.width, shown.height, shown.glow); }
     }
   }
 

@@ -87,6 +87,7 @@ namespace quake
       {"Sound Volume", MenuOptions::sound_volume_name, 0.0f, 1.0f, 0.1f},
       {"Always Run", MenuOptions::always_run_name, 0.0f, 1.0f, 0.0f},
       {"Invert Mouse", MenuOptions::invert_mouse_name, 0.0f, 1.0f, 0.0f},
+      {"Stick Speed", MenuOptions::stick_speed_name, 1.0f, 11.0f, 0.5f},
     }};
 
     /// What the option of a row is now, with 1 and 0 for on and off.
@@ -100,7 +101,8 @@ namespace quake
       case 3: return options.music_volume;
       case 4: return options.sound_volume;
       case 5: return options.always_run ? 1.0f : 0.0f;
-      default: return options.invert_mouse ? 1.0f : 0.0f;
+      case 6: return options.invert_mouse ? 1.0f : 0.0f;
+      default: return options.stick_speed;
       }
     }
 

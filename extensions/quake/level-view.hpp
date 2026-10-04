@@ -72,18 +72,35 @@ namespace quake
       std::string glow;
     };
 
-    /// An entity that shows a texture that changes: the pictures it shows
-    /// in turn, those it shows while the frame of its model is not 0, and
-    /// which it shows now.
+    /// One picture of a texture that changes, as the renderer takes it:
+    /// its size, its pixels, and its pixels that glow, which are empty when
+    /// none does.
+    struct Frame
+    {
+      std::uint32_t width = 0;
+      std::uint32_t height = 0;
+      std::vector<std::uint8_t> pixels;
+      std::vector<std::uint8_t> glow;
+    };
+
+    /// An entity that shows a texture that changes. The engine draws an
+    /// entity with the textures it had when it was first drawn
+    /// (neon-engine#402), so the entity is given a picture of its own,
+    /// and that picture is handed to the renderer anew with the pixels of
+    /// the frame whose turn it is.
     struct ChangingTexture
     {
-      neon::extension::Entity entity = 0;
-
       /// The number of the model of the level it is a part of.
       std::size_t model = 0;
 
-      std::vector<Pictures> frames;
-      std::vector<Pictures> alternate;
+      /// The names the renderer knows its picture and its glow by.
+      std::string name;
+      std::string glow_name;
+
+      /// The pictures it shows in turn, and those it shows while the frame
+      /// of its model is not 0.
+      std::vector<Frame> frames;
+      std::vector<Frame> alternate;
 
       /// Whether any of them glows, so that each is told its glow.
       bool glows = false;
@@ -151,8 +168,8 @@ namespace quake
     std::vector<ChangingTexture> _changing_textures;
     std::map<std::size_t, std::int32_t> _part_frames;
 
-    // the path of a picture in which nothing glows, once it was made
-    std::string _no_glow;
+    // how many pictures of textures that change were made, for their names
+    std::size_t _changing_made = 0;
 
     /// Finds where a player starts among the entities of a level.
     void FindStart(const neon::extension::World &world, const EntityText &text, const std::string &map);

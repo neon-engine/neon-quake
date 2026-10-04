@@ -520,6 +520,8 @@ namespace
     append(expected, make_bronze_letters("off", 220, 72));
     append(expected, make_bronze_letters("Invert Mouse", 96, 80));
     append(expected, make_bronze_letters("on", 220, 80));
+    append(expected, make_bronze_letters("Stick Speed", 104, 88));
+    append(expected, make_slider(88, 234));
     expected.push_back(MakeLetter(12, 200, 40, center));
     EXPECT_THAT(menu.Layout(0.0, options), ElementsAreArray(expected));
 
@@ -553,11 +555,11 @@ namespace
     EXPECT_EQ(find_knob(menu.Layout(0.0, options), 40), 292);
   }
 
-  TEST(MenuTest, MovesAroundTheSevenOptions)
+  TEST(MenuTest, MovesAroundTheEightOptions)
   {
     Menu menu = make_menu_in(2);
     EXPECT_THAT(menu.Press(MenuKey::Up), ElementsAre(move_sound));
-    EXPECT_EQ(menu.GetCursor(), 6);
+    EXPECT_EQ(menu.GetCursor(), 7);
     EXPECT_THAT(menu.Press(MenuKey::Down), ElementsAre(move_sound));
     EXPECT_EQ(menu.GetCursor(), 0);
 
@@ -668,7 +670,7 @@ namespace
     menu.Press(MenuKey::Down);
     EXPECT_THAT(
       menu.Press(MenuKey::Select, options),
-      ElementsAre(change_sound, set_option("viewsize", 120.0f), enter_sound));
+      ElementsAre(change_sound, set_option("joy_sensitivity", 3.5f), enter_sound));
   }
 
   TEST(MenuOptionsTest, SetsAnOptionByItsName)

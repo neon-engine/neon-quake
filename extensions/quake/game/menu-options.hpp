@@ -16,6 +16,7 @@ namespace quake
     static constexpr std::string_view screen_size_name = "viewsize";
     static constexpr std::string_view gamma_name = "gamma";
     static constexpr std::string_view mouse_speed_name = "sensitivity";
+    static constexpr std::string_view stick_speed_name = "joy_sensitivity";
     static constexpr std::string_view music_volume_name = "bgmvolume";
     static constexpr std::string_view sound_volume_name = "volume";
     static constexpr std::string_view always_run_name = "always_run";
@@ -36,6 +37,10 @@ namespace quake
     /// How far the mouse turns the view, from 1 to 11 in steps of 0.5.
     float mouse_speed = 3.0f;
 
+    /// How far the stick of a controller turns the view, from 1 to 11 in
+    /// steps of 0.5, apart from the mouse. The original had no such option.
+    float stick_speed = 3.0f;
+
     /// How loud the music is, from 0 to 1 in steps of 0.1.
     float music_volume = 1.0f;
 
@@ -55,6 +60,7 @@ namespace quake
       if (name == screen_size_name) { screen_size = value; }
       else if (name == gamma_name) { gamma = value; }
       else if (name == mouse_speed_name) { mouse_speed = value; }
+      else if (name == stick_speed_name) { stick_speed = value; }
       else if (name == music_volume_name) { music_volume = value; }
       else if (name == sound_volume_name) { sound_volume = value; }
       else if (name == always_run_name) { always_run = value != 0.0f; }

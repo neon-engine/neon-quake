@@ -120,10 +120,13 @@ namespace quake
   {
     const World &world = *_world;
     const std::string model(_player.GetModelName(state.model));
-    if (model != shown.model)
+    // another skin is shown by another entity, as another model is, see
+    // GameCode::Show
+    if (model != shown.model || (shown.is_alias && state.skin != shown.skin))
     {
       Hide(shown);
       shown.model = model;
+      shown.skin = state.skin;
       if (const std::size_t part = read_part_number(model); part > 0)
       {
         shown.entity = _view->FindPart(part);

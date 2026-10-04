@@ -28,8 +28,13 @@ actions:
   look:
     type: axis2
     mouse: motion
+  # The stick looks apart from the mouse, so that each has a speed of its
+  # own in the options. Pushed all the way it turns as a mouse moved this
+  # many pixels in a second: about 210 degrees at the speed it starts with.
+  look-stick:
+    type: axis2
     stick: right
-    rate: 600
+    rate: 3200
   jump:
     type: button
     keys: [space]
