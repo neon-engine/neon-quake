@@ -8,3 +8,6 @@ id1/
 *.PAK
 
 .DS_Store
+
+# trees of the same repository, for work side by side
+/worktrees/

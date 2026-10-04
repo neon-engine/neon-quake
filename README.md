@@ -6,7 +6,8 @@ proof that the engine can be extended from outside, and that a game can be
 made on it without touching the engine. The engine knows nothing of Quake.
 
 **Where this stands.** A project and an extension that starts and looks for
-the data. Nothing of the data is read yet.
+the data, and the beginning of the formats: the reader of bytes and the
+palette. Nothing of the data is shown yet.
 
 ## What it is made of
 
@@ -14,9 +15,16 @@ the data. Nothing of the data is read yet.
 assets/project.yml          the project: its name, and the scene it starts with
 extensions/quake/
   extension.yml             the recipe of the extension
-  quake.cpp                 its code
+  quake.cpp                 its code: what it brings to the engine
+  formats/                  the formats of the game's data, read from bytes
   assets/                   its scenes, and whatever else it brings
 ```
+
+`formats/` knows nothing of the engine: an archive, a picture, a level, a
+model, the game code, each read from bytes in memory into plain structs. It is
+a library of its own, `quake-formats`, which the extension links, and which
+is tested without the engine. `quake.cpp` and what joins it turn what the
+formats read into entities, meshes, and textures of the engine.
 
 It is a project with an extension, see
 [projects.md](../neon-engine/docs/projects.md#a-project-with-code-in-c) and
@@ -45,13 +53,33 @@ project's `project.yml` on top, and `extensions/quake/`.
 ## The data of the game
 
 The data is not ours and is never committed. The extension reads the
-player's own copy from `id1` in its folder next to the runtime:
+player's own copy from `id1` under its assets next to the runtime, as
+`extensions://quake/assets/id1/pak0.pak`:
 
 ```
-build/quake/extensions/quake/id1/pak0.pak
+build/quake/extensions/quake/assets/id1/pak0.pak
 ```
 
-Without it the game starts and says that it is missing.
+Without it the game starts and says that it is missing. An archive is read as
+the file it is and taken apart by the extension; the engine knows nothing of
+archives.
+
+## Tests
+
+A test sits next to the file it tests and is named after it, with `.test` in
+front of the extension, as in the engine. The files of `formats/` are found
+by the build, so a format is added by adding its files.
+
+```sh
+cmake --build build --target quake-tests
+ctest --test-dir build
+```
+
+The tests make the bytes they read themselves. One that wants real data
+looks for it in `QUAKE_TEST_DATA_DIRECTORY`, by default `../LibreQuake/lq1`,
+a checkout of [LibreQuake](https://github.com/lavenderdotpet/LibreQuake),
+whose data is free, and skips itself when it is not there. Nothing of it is
+committed here.
 
 ## How it is written
 

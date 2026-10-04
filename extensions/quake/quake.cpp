@@ -7,10 +7,10 @@
 
 namespace quake
 {
-  /// Where the data of the game is looked for: the folder `id1` in the
-  /// folder of the extension, next to the runtime. It is the player's own
+  /// Where the data of the game is looked for: the folder `id1` under the
+  /// assets of the extension, next to the runtime. It is the player's own
   /// copy and never part of this repository.
-  const std::string first_pak = "extensions://quake/id1/pak0.pak";
+  const std::string first_pak = "extensions://quake/assets/id1/pak0.pak";
 
   class Quake final : public neon::extension::Extension
   {

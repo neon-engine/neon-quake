@@ -3,8 +3,12 @@
 # Nothing of the engine is compiled here. The engine is found by one path,
 # and what is used of it is cmake/NeonSdk.cmake, the two headers of
 # extensions, and a NeonRuntime that is built already.
-cmake_minimum_required(VERSION 3.16 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.18 FATAL_ERROR)
 project(neon-quake C CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(NEON_ENGINE_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/../neon-engine" CACHE PATH
         "The checkout of Neon Engine this is built against")
@@ -17,7 +21,66 @@ endif ()
 
 include("${NEON_ENGINE_DIRECTORY}/cmake/NeonSdk.cmake")
 
+# The formats of the game's data, read from bytes in memory: archives,
+# pictures, levels, models, the game code. They know nothing of the engine,
+# which is what lets them be tested without it. The extension links them.
+#
+# The files are found, not listed, so that a format is added by adding its
+# files. A test is named after the file it tests, with `.test` in front of
+# the extension, and sits next to it, as in the engine.
+file(GLOB QUAKE_FORMAT_FILES CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_LIST_DIR}/extensions/quake/formats/*.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/extensions/quake/formats/*.hpp"
+)
+set(QUAKE_FORMAT_TESTS ${QUAKE_FORMAT_FILES})
+list(FILTER QUAKE_FORMAT_FILES EXCLUDE REGEX "\\.test\\.cpp$")
+list(FILTER QUAKE_FORMAT_TESTS INCLUDE REGEX "\\.test\\.cpp$")
+
+add_library(quake-formats STATIC ${QUAKE_FORMAT_FILES})
+target_include_directories(quake-formats PUBLIC "${CMAKE_CURRENT_LIST_DIR}/extensions/quake")
+target_compile_options(quake-formats PRIVATE -Wall -Wextra -Werror -Wno-unused-parameter)
+# it is linked into a library that is opened while the runtime runs
+set_target_properties(quake-formats PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 neon_add_project(quake
         SOURCES
         extensions/quake/quake.cpp
 )
+target_link_libraries(quake-extension PRIVATE quake-formats)
+
+set(QUAKE_TEST_DATA_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/../LibreQuake/lq1" CACHE PATH
+        "A folder of game data to test the formats with, such as lq1 of a checkout of LibreQuake. Optional")
+
+# Tests of the formats. They need GoogleTest, which is taken from the engine's
+# checkout as sources; nothing of the engine itself is built. `ctest` runs
+# them, and the target quake-tests builds them. They are not part of the
+# default build.
+option(QUAKE_BUILD_TESTS "Make the tests of the formats available to build" ON)
+if (QUAKE_BUILD_TESTS AND EXISTS "${NEON_ENGINE_DIRECTORY}/external/googletest/CMakeLists.txt")
+  enable_testing()
+  include(GoogleTest)
+
+  set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+  set(BUILD_GMOCK ON CACHE BOOL "" FORCE)
+  add_subdirectory("${NEON_ENGINE_DIRECTORY}/external/googletest" "${CMAKE_BINARY_DIR}/googletest" EXCLUDE_FROM_ALL)
+
+  add_custom_target(quake-tests)
+
+  foreach (TEST_SOURCE IN LISTS QUAKE_FORMAT_TESTS)
+    get_filename_component(TEST_NAME "${TEST_SOURCE}" NAME)
+    string(REGEX REPLACE "\\.test\\.cpp$" "" TEST_NAME "${TEST_NAME}")
+    set(TEST_TARGET "quake-formats.${TEST_NAME}.test")
+
+    add_executable(${TEST_TARGET} EXCLUDE_FROM_ALL "${TEST_SOURCE}")
+    target_compile_options(${TEST_TARGET} PRIVATE -Wall -Wextra -Werror -Wno-unused-parameter)
+    target_link_libraries(${TEST_TARGET} PRIVATE GTest::gmock_main quake-formats)
+    # Where data to test with may be found on this machine: a checkout of
+    # LibreQuake, whose data is free. A test that wants it skips itself when
+    # it is not there; nothing of it is ever committed here.
+    target_compile_definitions(${TEST_TARGET} PRIVATE
+            QUAKE_TEST_DATA_DIRECTORY="${QUAKE_TEST_DATA_DIRECTORY}")
+    add_dependencies(quake-tests ${TEST_TARGET})
+
+    gtest_discover_tests(${TEST_TARGET} DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60)
+  endforeach ()
+endif ()
