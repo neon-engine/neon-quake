@@ -50,7 +50,7 @@ extensions/quake/
   shaders/                  the shaders of the game: pixels as they are, liquids, the sky
   formats/                  the formats of the game's data, read from bytes
   game/                     what the game does with its data, without the engine
-  assets/                   its scenes, and the data of the game under id1/
+  assets/                   its scenes, and the data of the game under id1/, which a player brings
 tools/tour.py               pictures of everything a level shows, for checking by eye
 ```
 
@@ -184,24 +184,17 @@ are left out, as are faces painted `trigger`, `clip`, or `skip`.
 
 ## The data of the game
 
-The repository carries a game to run: the data of
-[LibreQuake](https://github.com/lavenderdotpet/LibreQuake) 0.9, a free game
-made for this engine's kind, under `extensions/quake/assets/id1/`, kept by
-Git LFS. Its maps, models, textures, and sounds are under the BSD 3-clause
-licence, and its game code, `progs.dat` inside `pak0.pak`, and `pop.lmp`
-under the GPL 2; the notices are next to the data, in `id1/docs/`, and stay
-with it.
-
-```sh
-git lfs install
-git lfs pull
-```
+The repository carries no data of any game. Whoever builds it puts an `id1`
+folder of their own under `extensions/quake/assets/id1/`: that of the
+original game, or of [LibreQuake](https://github.com/lavenderdotpet/LibreQuake),
+a free game made for this engine's kind. Git leaves the folder alone, and
+the build copies it, with the rest of `extensions/quake/assets/`, to where
+the game is put together.
 
 The extension reads it as `extensions://quake/assets/id1/pak0.pak`,
 `pak1.pak`, and so on, each archive as the file it is, and takes it apart
-itself; the engine knows nothing of archives. Whoever owns the original game
-puts its `id1` in place of this one, on their own machine. The original's
-data is not ours and is never committed.
+itself; the engine knows nothing of archives. The data is not ours and is
+never committed.
 
 Without any data the game starts and says that it is missing.
 
@@ -217,8 +210,8 @@ ctest --test-dir build
 ```
 
 The tests make the bytes they read themselves. One that wants real data
-looks for it in `QUAKE_TEST_DATA_DIRECTORY`, by default the data this
-repository carries, and skips itself when the file it wants is not there as
+looks for it in `QUAKE_TEST_DATA_DIRECTORY`, by default the `id1` put
+under the assets, and skips itself when the file it wants is not there as
 a file of its own: the levels under `id1/maps` are, what is inside the
 archives is not. A checkout of LibreQuake has the rest loose, under `lq1`.
 

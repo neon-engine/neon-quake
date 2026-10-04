@@ -23,8 +23,8 @@ namespace quake
   /// `QUAKE_TEST_DATA_DIRECTORY` names, with `pak1.pak` over it when the
   /// folder has one, read once for a test program.
   ///
-  /// The data is not always there: a checkout without Git LFS has a few
-  /// lines of text in the place of a pak. A test asks IsThere() first and
+  /// The data is not always there: the repository carries none, and a
+  /// player brings their own. A test asks IsThere() first and
   /// skips itself when it is not.
   class RealData
   {

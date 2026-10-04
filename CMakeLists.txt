@@ -129,7 +129,7 @@ add_dependencies(quake-extension quake-shaders)
 
 
 set(QUAKE_TEST_DATA_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/extensions/quake/assets/id1" CACHE PATH
-        "A folder of game data to test the formats with: the data this repository carries, or lq1 of a checkout of LibreQuake")
+        "A folder of game data to test the formats with: the id1 put under the assets, or lq1 of a checkout of LibreQuake")
 
 # Tests of the formats and of the game. They need GoogleTest, which is taken from the engine's
 # checkout as sources; nothing of the engine itself is built. `ctest` runs
@@ -157,7 +157,7 @@ if (QUAKE_BUILD_TESTS AND EXISTS "${NEON_ENGINE_DIRECTORY}/external/googletest/C
     add_executable(${TEST_TARGET} EXCLUDE_FROM_ALL "${TEST_SOURCE}")
     target_compile_options(${TEST_TARGET} PRIVATE -Wall -Wextra -Werror -Wno-unused-parameter)
     target_link_libraries(${TEST_TARGET} PRIVATE GTest::gmock_main quake-game)
-    # Where data to test with is found: the data this repository carries,
+    # Where data to test with is found: the id1 put under the assets,
     # unless the build says otherwise. A test that wants a file that is not
     # there skips itself.
     target_compile_definitions(${TEST_TARGET} PRIVATE
