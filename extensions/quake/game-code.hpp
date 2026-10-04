@@ -94,6 +94,26 @@ namespace quake
     std::unique_ptr<Level> _level;
     std::vector<Shown> _shown;
 
+    // the entity everything the game code shows stands under, so that it
+    // goes with the level
+    neon::extension::Entity _root = 0;
+
+    // The level that runs, and the one the game code asked for, which is
+    // gone to once the step it asked in is over. Empty for none.
+    std::string _map;
+    std::string _wanted_map;
+
+    // The numbers the player came into the level with, which a player who
+    // died starts it with again, and those the player leaves it with. Empty
+    // for those of a new player.
+    std::vector<float> _start_parms;
+    std::vector<float> _wanted_parms;
+    float _server_flags = 0.0f;
+
+    // how high the eyes of the player are above the feet, as last told to
+    // the engine, in units of the game
+    float _eye_height = 0.0f;
+
     // what the game is shown with, which outlive a level
     const neon::extension::World *_world = nullptr;
     const GameData *_data = nullptr;
@@ -174,6 +194,22 @@ namespace quake
     /// Calls `touch` of everything the player is in or at.
     void TouchAsPlayer();
 
+    /// Whether the body of the player is the game code's for now, and not
+    /// the engine's: a player who is dead, or looks at a level that is
+    /// over, is where the game code has it.
+    [[nodiscard]] bool IsPlayerHeld();
+
+    /// Takes away everything the game code shows, and the game code of the
+    /// level itself.
+    void Stop();
+
+    /// Starts the game code for the level `_map`, which the level view
+    /// shows already, with the numbers the player brings.
+    bool Run(std::string &error);
+
+    /// Goes to the level the game code asked for.
+    void GoToWantedLevel();
+
     /// Says the failures of the game code that were not said yet.
     void SayFailures();
 
@@ -192,6 +228,8 @@ namespace quake
     void EntityRemoved(std::int32_t entity) override;
 
     void ChangeLevel(std::string_view level) override;
+
+    void ServerCommand(std::string_view text) override;
 
     /// Starts the game code for a level the level view shows already: reads
     /// `progs.dat`, hands it the entities of the level, and lets the one

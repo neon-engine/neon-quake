@@ -35,6 +35,9 @@ namespace quake
   /// are.
   class LevelView
   {
+    // the entity everything of the level that is shown stands under
+    neon::extension::Entity _root = 0;
+
     // where a player starts, in the space of the engine, once a level that
     // says so is shown
     bool _has_start = false;
@@ -112,6 +115,10 @@ namespace quake
       const GameData &data,
       const std::string &map,
       std::string &error);
+
+    /// Takes the level that is shown out of the world, with everything
+    /// under it. Show() does so itself before it shows another.
+    void Clear(const neon::extension::World &world);
 
     /// The entity a model of the level that is shown stands under, by its
     /// number, which a door, a lift, or a button is moved by. Nothing for

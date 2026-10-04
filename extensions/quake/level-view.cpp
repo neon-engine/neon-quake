@@ -333,6 +333,18 @@ namespace quake
     return true;
   }
 
+  void LevelView::Clear(const World &world)
+  {
+    if (_root != 0) { world.DestroyEntity(_root); }
+    _root = 0;
+
+    // the pictures of a level that was shown before are not those of the next
+    _pictures.clear();
+    _parts.clear();
+    _has_start = false;
+    _player_placed = false;
+  }
+
   Entity LevelView::FindPart(const std::size_t model) const
   {
     const auto found = _parts.find(model);
@@ -388,12 +400,11 @@ namespace quake
       return false;
     }
 
-    // the pictures of a level that was shown before are not those of this one
-    _pictures.clear();
-    _parts.clear();
+    Clear(world);
 
     const Entity root = world.CreateEntity("level");
     world.AddComponent(root, "Transform");
+    _root = root;
 
     std::size_t triangles = 0;
 

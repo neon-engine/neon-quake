@@ -2,7 +2,9 @@
 #define QUAKE_LEVEL_RUNNING_HPP
 
 #include <cstddef>
+#include <array>
 #include <cstdint>
+#include <span>
 #include <string_view>
 #include <vector>
 
@@ -99,7 +101,17 @@ namespace quake
     /// level starts one, `PutClientInServer`. A name that is not empty is
     /// the player's `netname`. False when one of the three was stopped or
     /// is not in the program.
-    bool ConnectClient(std::int32_t entity, std::string_view name = {});
+    ///
+    /// A player who comes from another level brings the numbers that were
+    /// taken there with SaveClient(), `parms`, which are then put in the
+    /// place of those of a new player: what the player carries and how well
+    /// the player is. Anything but as many as the game has is taken as none.
+    bool ConnectClient(std::int32_t entity, std::string_view name = {}, std::span<const float> parms = {});
+
+    /// The numbers a player takes along to the next level, as the game code
+    /// works them out with `SetChangeParms`. Those of a new player, zeros,
+    /// when the program has no such function or it was stopped.
+    [[nodiscard]] std::array<float, QcGlobals::parm_count> SaveClient(std::int32_t entity);
 
     /// Runs what the game code does for a player before or after the player
     /// is moved in a frame. A host calls it around its own moving of the

@@ -478,6 +478,34 @@ namespace
     EXPECT_EQ(_globals.time.Get(_machine), 1.0f);
   }
 
+  TEST_F(LevelRunningClientTest, LetsAPlayerInWithTheNumbersBroughtFromAnotherLevel)
+  {
+    LevelRunning running(_machine);
+    const std::int32_t player = _machine.CreateEntity().value_or(0);
+
+    // PutClientInServer of the fixture expects 100 in the first, which
+    // only SetNewParms puts there otherwise
+    std::array<float, QcGlobals::parm_count> parms{};
+    parms[0] = 100.0f;
+
+    EXPECT_TRUE(running.ConnectClient(player, "ranger", parms));
+    // the numbers of a new player are not asked for
+    EXPECT_THAT(_calls, ElementsAre(
+                  std::pair<std::string, std::int32_t>("ClientConnect", player),
+                  std::pair<std::string, std::int32_t>("PutClientInServer", player)));
+    EXPECT_EQ(_globals.parms[0].Get(_machine), 100.0f);
+  }
+
+  TEST_F(LevelRunningClientTest, TakesTheNumbersAPlayerBringsToTheNextLevel)
+  {
+    LevelRunning running(_machine);
+    const std::int32_t player = _machine.CreateEntity().value_or(0);
+
+    // the fixture has no SetChangeParms, so a player leaves as a new one
+    EXPECT_THAT(running.SaveClient(player), ::testing::Each(0.0f));
+    EXPECT_THAT(running.SaveClient(99), ::testing::Each(0.0f));
+  }
+
   TEST_F(LevelRunningClientTest, RefusesAPlayerWhoseEntityIsFree)
   {
     LevelRunning running(_machine);

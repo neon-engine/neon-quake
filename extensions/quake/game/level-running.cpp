@@ -168,17 +168,35 @@ namespace quake
     _globals.time.Set(_machine, static_cast<float>(_time));
   }
 
-  bool LevelRunning::ConnectClient(const std::int32_t entity, const std::string_view name)
+  bool LevelRunning::ConnectClient(
+    const std::int32_t entity, const std::string_view name, const std::span<const float> parms)
   {
     if (_machine.IsEntityFree(entity)) { return false; }
 
     if (!name.empty()) { _fields.netname.SetText(_machine, entity, name); }
 
-    // SetNewParms leaves the numbers in the globals `parm1` to `parm16`,
-    // where PutClientInServer reads them.
-    return RunNamed(_globals.SetNewParms, "SetNewParms", entity) &&
-           RunNamed(_globals.ClientConnect, "ClientConnect", entity) &&
+    // The numbers a player starts with are in the globals `parm1` to
+    // `parm16`, where PutClientInServer reads them: left there by
+    // SetNewParms for a new player, and put there for one who brings them.
+    if (parms.size() == _globals.parms.size())
+    {
+      for (std::size_t i = 0; i < parms.size(); i++) { _globals.parms[i].Set(_machine, parms[i]); }
+    } else if (!RunNamed(_globals.SetNewParms, "SetNewParms", entity))
+    {
+      return false;
+    }
+
+    return RunNamed(_globals.ClientConnect, "ClientConnect", entity) &&
            RunNamed(_globals.PutClientInServer, "PutClientInServer", entity);
+  }
+
+  std::array<float, QcGlobals::parm_count> LevelRunning::SaveClient(const std::int32_t entity)
+  {
+    std::array<float, QcGlobals::parm_count> parms{};
+    if (_machine.IsEntityFree(entity) || !RunNamed(_globals.SetChangeParms, "SetChangeParms", entity)) { return parms; }
+
+    for (std::size_t i = 0; i < parms.size(); i++) { parms[i] = _globals.parms[i].Get(_machine); }
+    return parms;
   }
 
   bool LevelRunning::RunClientThink(const std::int32_t entity, const ClientThink moment)
