@@ -26,9 +26,9 @@ pose and one stride to the next, so the game is as fluid as the display.
 The status bar of the original is there, with what the game code tells the
 player above it and the counts of a level at its end. Textures are shown pixel by pixel, liquids swim and are seen through as far
 as a level says, the sky drifts, and a level has its fog. The game greets a player with the menu of the original, which escape opens
-again: a new game, the options, the manual, leaving. A game is saved and gone back to from the menu, in the form the original
-saves one, though only while the game runs: nothing is written to a file
-yet. Lights flicker, pulse, and are switched as the game code sets them.
+again: a new game, the options, the manual, leaving. A game is saved and gone back to from the menu, as the files the original
+writes, `s0.sav` to `s11.sav` under `user://saves/`, and what the menu sets
+is kept in `user://quake.cfg`. Lights flicker, pulse, and are switched as the game code sets them.
 
 ## What it is made of
 

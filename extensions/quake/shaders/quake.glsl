@@ -1,34 +1,31 @@
 // What the shaders of the game share.
 //
-// The clock. The engine hands a shader no time and nothing of a game's own,
-// so the game keeps one point light that gives no light, and writes into
-// the three numbers of how it fades: the time of the game in seconds, how
-// thick the fog of the level is, and nothing yet. Where the light stands is
-// the colour of the fog. See GameCode::ShowView.
+// The time. The engine tells every shader how long the world has run.
 float game_time()
 {
-    return scene.point_lights[0].attenuation.x;
+    return scene.time.x;
 }
 
 // The fog of a level over what is drawn at a place of the world. It is as
 // the ports of today have it: what is seen fades into the colour of the fog
 // with the square of how far it is, counted in the units of the game, 32 to
-// a metre. A level without fog has none of it.
+// a metre. The game sets how thick the fog is as the first of its numbers
+// for the shaders, and its colour as the second, see GameCode::Run. A level
+// without fog has none of it.
 vec3 in_fog(vec3 shown, vec3 at)
 {
-    float density = scene.point_lights[0].attenuation.y;
+    float density = scene.numbers[0].x;
     if (density <= 0.0) { return shown; }
 
     float far = length(at - scene.view_position.xyz) * 32.0 * density / 64.0;
-    return mix(scene.point_lights[0].position.xyz, shown, clamp(exp(-far * far), 0.0, 1.0));
+    return mix(scene.numbers[1].rgb, shown, clamp(exp(-far * far), 0.0, 1.0));
 }
 
 // The sky is not at any distance. It takes half the colour of the fog, as
 // the ports have it.
 vec3 sky_in_fog(vec3 shown)
 {
-    float density = scene.point_lights[0].attenuation.y;
-    return density <= 0.0 ? shown : mix(shown, scene.point_lights[0].position.xyz, 0.5);
+    return scene.numbers[0].x <= 0.0 ? shown : mix(shown, scene.numbers[1].rgb, 0.5);
 }
 
 // A texture read pixel by pixel, as the game shows its pictures: the pixel

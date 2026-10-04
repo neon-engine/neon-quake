@@ -1074,30 +1074,26 @@ namespace quake
     // view up for a moment.
     const Vector punch = fields.punchangle.Get(machine, player_entity);
     _world->SetVector3(_player, _rotation_field, {0.0f, QuakeSpace::ToEngineYaw(_view_yaw + punch[1]), 0.0f});
-    if (_camera != 0) { _world->SetVector3(_camera, _rotation_field, {-(_view_pitch + punch[0]), 0.0f, 0.0f}); }
+    // The view leans into a sidestep, a little, and lies on its side when
+    // the player is dead, as the original has it. The camera of the scene
+    // rolls with its entity, and what hangs from it, the weapon and the
+    // status bar, rolls along and so stays level on the screen.
+    float lean = 0.0f;
+    if (fields.health.Get(machine, player_entity) <= 0.0f)
+    {
+      lean = dead_roll;
+    } else if (!IsPlayerHeld())
+    {
+      const Vector velocity = fields.velocity.Get(machine, player_entity);
+      const LevelAxes facing = LevelAxes::Of({0.0f, _view_yaw, 0.0f});
+      const float side = velocity[0] * facing.right[0] + velocity[1] * facing.right[1];
+      lean = std::copysign(std::min(std::abs(side) * roll_angle / roll_speed, roll_angle), side);
+    }
+    if (_camera != 0) { _world->SetVector3(_camera, _rotation_field, {-(_view_pitch + punch[0]), 0.0f, -lean}); }
 
     // the particles, seen from where the eyes are shown
     const LevelAxes axes = LevelAxes::Of({_view_pitch + punch[0], _view_yaw + punch[1], 0.0f});
     _particle_view.Show(*_world, _data->GetPalette(), _root, _level->particles.GetParticles(), eyes, axes.forward, axes.right, axes.up);
-
-    // The shaders are told the time, which makes liquids swim and the sky
-    // drift, in every frame that is drawn.
-    if (_clock == 0)
-    {
-      _clock = _world->CreateEntity("clock of the shaders", _root);
-      _world->AddComponent(_clock, "Transform");
-      _world->AddComponent(_clock, "Light");
-      _world->SetText(_clock, _world->FindField("Light", "type"), "point");
-    }
-    _world->SetNumber(
-      _clock, _world->FindField("Light", "constant"),
-      _level->running.GetTime() + static_cast<double>(blend * _step));
-
-    // and the fog of the level: how thick, and its colour as where the
-    // light stands
-    _world->SetNumber(_clock, _world->FindField("Light", "linear"), _view->GetFogDensity());
-    const std::array<float, 3> fog = _view->GetFogColour();
-    _world->SetVector3(_clock, _position_field, {fog[0], fog[1], fog[2]});
 
     ShowHud();
 
@@ -1112,6 +1108,70 @@ namespace quake
     game.is_in_intermission = _is_over;
     for (std::size_t slot = 0; slot < save_slots; slot++) { game.slots[slot] = _save_names[slot]; }
     return game;
+  }
+
+  std::string GameCode::PathOfSave(const std::size_t slot)
+  {
+    // as the original names them, s0.sav to s11.sav
+    return std::string(saves_folder) + "s" + std::to_string(slot) + ".sav";
+  }
+
+  void GameCode::ReadSaves()
+  {
+    for (std::size_t slot = 0; slot < save_slots; slot++)
+    {
+      std::vector<std::uint8_t> bytes;
+      if (!_world->FileExists(PathOfSave(slot)) || !_world->ReadFile(PathOfSave(slot), bytes)) { continue; }
+
+      SavedGame game;
+      const std::string text(bytes.begin(), bytes.end());
+      if (std::string problem; !SavedGameText::Read(text, game, problem))
+      {
+        _world->Warn(PathOfSave(slot) + " is no saved game and is left alone: " + problem);
+        continue;
+      }
+
+      _saves[slot] = text;
+      _save_names[slot] = game.comment;
+      std::replace(_save_names[slot].begin(), _save_names[slot].end(), '_', ' ');
+    }
+  }
+
+  void GameCode::ReadOptions()
+  {
+    std::vector<std::uint8_t> bytes;
+    if (!_world->FileExists(std::string(options_file)) || !_world->ReadFile(std::string(options_file), bytes)) { return; }
+
+    // a line for each: its name, a space, its value
+    const std::string text(bytes.begin(), bytes.end());
+    std::size_t at = 0;
+    while (at < text.size())
+    {
+      const std::size_t end = std::min(text.find('\n', at), text.size());
+      const std::string line = text.substr(at, end - at);
+      at = end + 1;
+
+      const std::size_t space = line.find(' ');
+      if (space == std::string::npos) { continue; }
+      _options.Set(line.substr(0, space), std::strtof(line.c_str() + space + 1, nullptr));
+    }
+  }
+
+  void GameCode::WriteOptions()
+  {
+    std::string text;
+    const auto add = [&text](const std::string_view name, const float value)
+    {
+      text += std::string(name) + " " + std::to_string(value) + "\n";
+    };
+    add(MenuOptions::screen_size_name, _options.screen_size);
+    add(MenuOptions::gamma_name, _options.gamma);
+    add(MenuOptions::mouse_speed_name, _options.mouse_speed);
+    add(MenuOptions::music_volume_name, _options.music_volume);
+    add(MenuOptions::sound_volume_name, _options.sound_volume);
+    add(MenuOptions::always_run_name, _options.always_run ? 1.0f : 0.0f);
+    add(MenuOptions::invert_mouse_name, _options.invert_mouse ? 1.0f : 0.0f);
+    _world->WriteFile(std::string(options_file), std::vector<std::uint8_t>(text.begin(), text.end()));
   }
 
   void GameCode::Save(const std::size_t slot)
@@ -1146,6 +1206,12 @@ namespace quake
 
     _saves[slot] = SavedGameText::Write(SavedGameCapture::Capture(machine, std::move(head)));
 
+    // kept as a file of the player's, where the next run of the game finds it
+    if (!_world->WriteFile(PathOfSave(slot), std::vector<std::uint8_t>(_saves[slot].begin(), _saves[slot].end())))
+    {
+      _world->Warn("The game could not be written to " + PathOfSave(slot) + ", and is kept until the game is left");
+    }
+
     // the menu shows the name with its spaces
     std::string shown = SavedGameText::MakeComment(
       _level->fields.message.GetText(machine, 0),
@@ -1153,7 +1219,7 @@ namespace quake
       static_cast<int>(_level->globals.total_monsters.Get(machine)));
     std::replace(shown.begin(), shown.end(), '_', ' ');
     _save_names[slot] = shown;
-    _world->Info("The game is kept in place " + std::to_string(slot + 1) + ", until the game is left");
+    _world->Info("The game is kept in place " + std::to_string(slot + 1));
   }
 
   void GameCode::Load(const std::size_t slot)
@@ -1185,6 +1251,7 @@ namespace quake
           break;
         case MenuActionKind::SetOption:
           _options.Set(action.name, action.value);
+          WriteOptions();
           break;
         case MenuActionKind::NewGame:
           // the game starts where the original starts one, as a new player
@@ -1193,10 +1260,10 @@ namespace quake
           _server_flags = 0.0f;
           break;
         case MenuActionKind::Quit:
-          // The engine gives an extension no way to end the application, so
-          // the process is ended as it is. Nothing of the game is unsaved.
+          // the application closes as its own menu would close it
           _world->Info("The game is left from its menu");
-          std::_Exit(0);
+          _world->RequestQuit();
+          break;
         case MenuActionKind::LoadGame:
           Load(static_cast<std::size_t>(action.slot));
           break;
@@ -1335,7 +1402,13 @@ namespace quake
 
     // The game greets a player with its menu, over the room it starts in. A
     // tour has nobody to greet.
-    if (!_was_started && !_tours) { _menu.Open(); }
+    if (!_was_started)
+    {
+      // what the player saved and set in a run before
+      ReadSaves();
+      ReadOptions();
+      if (!_tours) { _menu.Open(); }
+    }
     _was_started = true;
     _start_parms.clear();
     _server_flags = 0.0f;
@@ -1362,7 +1435,6 @@ namespace quake
     _weapon = 0;
     _impulse = 0.0f;
     _has_eyes = false;
-    _clock = 0;
     _status_bar.Forget();
     _tint.Clear();
     _is_over = false;
@@ -1383,6 +1455,12 @@ namespace quake
 
     _root = world.CreateEntity("game");
     world.AddComponent(_root, "Transform");
+
+    // The fog of the level, for the shaders of the game: how thick it is as
+    // the first of the game's numbers, its colour as the second.
+    const std::array<float, 3> fog = view.GetFogColour();
+    world.SetShaderNumbers(0, {view.GetFogDensity(), 0.0f, 0.0f, 0.0f});
+    world.SetShaderNumbers(1, {fog[0], fog[1], fog[2], 0.0f});
 
     const std::span<const std::uint8_t> code = data.Find("progs.dat");
     if (code.empty())

@@ -22,4 +22,6 @@ entities:
           Camera:
             fov: 73.74
             near: 0.05
+            # the view leans with the camera, as a head does
+            rolls_with_entity: true
           SoundListener: Default

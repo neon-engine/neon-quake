@@ -153,8 +153,8 @@ namespace quake
     static constexpr std::size_t save_slots = 12;
 
     // The games that were saved, each as the text the original writes for
-    // one, and what the menu calls each. They are kept while the game runs
-    // and no longer: an extension cannot write a file yet.
+    // one, and what the menu calls each. Each is a file of the player's as
+    // well, which the next run of the game reads.
     std::array<std::string, save_slots> _saves;
     std::array<std::string, save_slots> _save_names;
 
@@ -164,6 +164,22 @@ namespace quake
     // the numbers the player came into the level with, as the game code had
     // them when the player came in: what a saved game keeps of the player
     std::array<float, 16> _came_with{};
+
+    /// Where the saved games and the settings of the menu are kept: files
+    /// of the player's, which the next run of the game finds.
+    static constexpr std::string_view saves_folder = "user://saves/";
+    static constexpr std::string_view options_file = "user://quake.cfg";
+
+    /// The file of a place of the menu.
+    [[nodiscard]] static std::string PathOfSave(std::size_t slot);
+
+    /// Reads the saved games a run before left, for the menu to offer.
+    void ReadSaves();
+
+    /// Reads and writes what the menu sets.
+    void ReadOptions();
+
+    void WriteOptions();
 
     /// Keeps the game as it is in a place of the menu.
     void Save(std::size_t slot);
@@ -247,10 +263,6 @@ namespace quake
     /// how many are shown at once.
     static constexpr double message_seconds = 4.0;
     static constexpr std::size_t most_messages = 4;
-
-    // The clock of the shaders of the game, see shaders/quake.glsl: a light
-    // that gives none, whose numbers the shaders read.
-    neon::extension::Entity _clock = 0;
 
     // what draws the particles of the level
     ParticleView _particle_view;
@@ -374,6 +386,13 @@ namespace quake
     static constexpr float bob_amount = 0.02f;
     static constexpr float bob_cycle = 0.6f;
     static constexpr float bob_up = 0.5f;
+
+    /// How far the view leans into a sidestep, in degrees, the speed at
+    /// which it leans all the way, and how far it lies over when the player
+    /// is dead.
+    static constexpr float roll_angle = 2.0f;
+    static constexpr float roll_speed = 200.0f;
+    static constexpr float dead_roll = 80.0f;
 
     /// How fast the eyes follow a step up a stair, in units a second, and
     /// how far they may lag behind it, as in the original.
