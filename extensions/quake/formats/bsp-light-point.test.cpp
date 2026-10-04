@@ -24,7 +24,7 @@ namespace
   using ::testing::HasSubstr;
 
   /// What a node names a leaf by. The level of the tests has one leaf.
-  constexpr std::int16_t leaf = -1;
+  constexpr std::int32_t leaf = -1;
 
   /// A level with no floor yet: a world, one leaf, and two ways to lay a
   /// texture, both with `s = x` and `t = y`, so that a sample of a floor
@@ -81,7 +81,7 @@ namespace
       const auto to = static_cast<std::uint16_t>(first_vertex + (i + 1) % 4);
       const auto edge = static_cast<std::int32_t>(file.edges.size());
       BspEdge made;
-      made.vertices = i % 2 == 0 ? std::array<std::uint16_t, 2>{from, to} : std::array<std::uint16_t, 2>{to, from};
+      made.vertices = i % 2 == 0 ? std::array<std::uint32_t, 2>{from, to} : std::array<std::uint32_t, 2>{to, from};
       file.face_edges.push_back(i % 2 == 0 ? edge : -edge);
       file.edges.push_back(made);
     }
@@ -97,7 +97,7 @@ namespace
     node.first_face = static_cast<std::uint16_t>(file.faces.size());
     node.face_count = 1;
 
-    const auto number = static_cast<std::int16_t>(file.nodes.size());
+    const auto number = static_cast<std::int32_t>(file.nodes.size());
     if (file.nodes.empty()) { file.models[0].head_nodes[0] = number; }
     else { file.nodes.back().children[1] = number; }
     file.nodes.push_back(node);
@@ -516,7 +516,7 @@ namespace
     file.nodes.resize(BspLightPoint::deepest_tree + 1, file.nodes[0]);
     for (std::size_t i = 0; i + 1 < file.nodes.size(); i++)
     {
-      file.nodes[i].children = {leaf, static_cast<std::int16_t>(i + 1)};
+      file.nodes[i].children = {leaf, static_cast<std::int32_t>(i + 1)};
     }
     EXPECT_THAT(ReasonOfRefusal(file), HasSubstr("deeper than"));
 

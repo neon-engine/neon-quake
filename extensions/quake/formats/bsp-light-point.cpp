@@ -75,7 +75,7 @@ namespace quake
       const std::string who = "face " + std::to_string(index);
       const BspFace &face = file.faces[index];
 
-      if (face.texture_info >= file.texture_infos.size())
+      if (face.texture_info < 0 || static_cast<std::size_t>(face.texture_info) >= file.texture_infos.size())
       {
         return refuse(error, names_outside(who, "texture info", face.texture_info, file.texture_infos.size()));
       }
@@ -91,7 +91,7 @@ namespace quake
       }
       if (face.first_edge < 0 ||
         static_cast<std::size_t>(face.first_edge) > file.face_edges.size() ||
-        face.edge_count > file.face_edges.size() - static_cast<std::size_t>(face.first_edge))
+        static_cast<std::size_t>(face.edge_count) > file.face_edges.size() - static_cast<std::size_t>(face.first_edge))
       {
         return refuse(error, who + " names edges of faces that are not there");
       }
@@ -100,7 +100,7 @@ namespace quake
       double least_t = 0.0;
       double most_s = 0.0;
       double most_t = 0.0;
-      for (std::size_t corner = 0; corner < face.edge_count; corner++)
+      for (std::size_t corner = 0; corner < static_cast<std::size_t>(face.edge_count); corner++)
       {
         // an edge of a face is an edge walked forwards, from its first
         // vertex, or, when negative, backwards, from its second
@@ -110,7 +110,7 @@ namespace quake
         {
           return refuse(error, names_outside(who, "edge", edge, file.edges.size()));
         }
-        const std::uint16_t vertex = file.edges[static_cast<std::size_t>(edge)].vertices[face_edge < 0 ? 1 : 0];
+        const std::uint32_t vertex = file.edges[static_cast<std::size_t>(edge)].vertices[face_edge < 0 ? 1 : 0];
         if (vertex >= file.vertices.size())
         {
           return refuse(error, names_outside(who, "vertex", vertex, file.vertices.size()));
@@ -172,25 +172,23 @@ namespace quake
       return true;
     }
 
-    /// A child of a node of the level as a fork keeps it. A level with more
-    /// nodes than a signed number of 16 bits counts keeps the numbers above
-    /// that as negative ones: a child is a node when, read without a sign,
-    /// it is the number of one that is there, and a leaf only otherwise, as
-    /// `BspHull` reads it.
+    /// A child of a node of the level as a fork keeps it: the number of a
+    /// node, or the one number that stands for every leaf.
     bool read_child(
-      const BspFile &file, const std::size_t node, const std::int16_t child, std::int32_t &made, std::string &error)
+      const BspFile &file, const std::size_t node, const std::int32_t child, std::int32_t &made, std::string &error)
     {
-      const auto unsigned_child = static_cast<std::size_t>(static_cast<std::uint16_t>(child));
-      if (unsigned_child < file.nodes.size())
+      // the reader of levels hands a child over as it is: not negative for
+      // a node, negative for a leaf
+      if (child < 0)
       {
-        made = static_cast<std::int32_t>(unsigned_child);
+        made = BspLightNode::leaf;
         return true;
       }
-      if (child >= 0)
+      if (static_cast<std::size_t>(child) >= file.nodes.size())
       {
         return refuse(error, names_outside("node " + std::to_string(node), "node", child, file.nodes.size()));
       }
-      made = BspLightNode::leaf;
+      made = child;
       return true;
     }
 
