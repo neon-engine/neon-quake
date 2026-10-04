@@ -11,3 +11,6 @@ id1/
 
 # trees of the same repository, for work side by side
 /worktrees/
+
+# the level a player chose to look at, on their own machine
+/extensions/quake/assets/level.txt

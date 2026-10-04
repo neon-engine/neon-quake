@@ -6,9 +6,10 @@ proof that the engine can be extended from outside, and that a game can be
 made on it without touching the engine. The engine knows nothing of Quake.
 
 **Where this stands.** The extension reads the archives of the game and shows
-a level: its walls, floors, and ceilings with their textures, seen from where
-a player starts, by a camera that flies. The level is not lit by its
-lightmaps yet, nothing can be walked on, and nothing in it moves.
+a level: its walls, floors, and ceilings with their textures, and its doors,
+lifts, and buttons at rest where the level puts them, seen from where a
+player starts, by a camera that flies. The level is not lit by its lightmaps
+yet, nothing can be walked on, and nothing in it moves.
 
 ## What it is made of
 
@@ -55,6 +56,31 @@ build/quake/NeonRuntime
 
 The game is put together in `build/quake/`: the runtime, its assets with this
 project's `project.yml` on top, and `extensions/quake/`.
+
+## Running it
+
+```sh
+build/quake/NeonRuntime
+```
+
+The level that is shown is `maps/start.bsp`, where the game itself starts,
+or the first level the data has when it has no such one. Another is chosen
+without changing code, by a text file next to the data whose first line is
+the name of a level:
+
+```sh
+echo maps/lq_e1m1.bsp > build/quake/extensions/quake/assets/level.txt
+```
+
+The extension reads it as `extensions://quake/assets/level.txt`. It is a
+choice of one's own machine and is never committed: Git leaves
+`extensions/quake/assets/level.txt` alone. When the data has no level of that
+name the game says so and shows the level it starts with; without the file
+it shows that level and says nothing.
+
+A level is shown with its other models, each under an entity named after
+what it is and its number, such as `func_door *3`. Triggers are volumes and
+are left out, as are faces painted `trigger`, `clip`, or `skip`.
 
 ## The data of the game
 
