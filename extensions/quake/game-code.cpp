@@ -1,6 +1,7 @@
 #include "game-code.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdlib>
 #include <set>
@@ -27,6 +28,18 @@ namespace quake
     /// The effect of a model that has it turn where it lies, as a weapon to
     /// pick up does.
     constexpr std::uint32_t turns_flag = 8;
+
+    /// The effects of a model that have it leave a trail of particles, a bit
+    /// each, and the trail each leaves.
+    constexpr std::array<std::pair<std::uint32_t, ParticleTrail>, 7> trails = {{
+      {1, ParticleTrail::Rocket},
+      {2, ParticleTrail::Smoke},
+      {4, ParticleTrail::Blood},
+      {16, ParticleTrail::WizardTracer},
+      {32, ParticleTrail::SlightBlood},
+      {64, ParticleTrail::KnightTracer},
+      {128, ParticleTrail::Voor},
+    }};
 
     /// How far such a model turns in a second, in degrees.
     constexpr double turn_speed = 100.0;
@@ -232,8 +245,18 @@ namespace quake
         machine.GetParameterFloat(3));
     });
 
-    // no sparks fly yet
-    set(QcBuiltinNumber::Particle, [](QcMachine &machine) {});
+    // Sparks and blood: so many particles of a colour, from a place, flying
+    // a way. The game code counts in whole numbers, and 255 stands for the
+    // burst of an explosion.
+    set(QcBuiltinNumber::Particle, [this](QcMachine &machine)
+    {
+      const auto count = static_cast<std::int32_t>(machine.GetParameterFloat(3));
+      _level->particles.RunEffect(
+        machine.GetParameterVector(0),
+        machine.GetParameterVector(1),
+        static_cast<std::int32_t>(machine.GetParameterFloat(2)),
+        count >= 255 ? ParticleSystem::explosion_count : count);
+    });
   }
 
   void GameCode::PrintToAll(const std::string_view text)
@@ -410,6 +433,17 @@ namespace quake
       shown.is_placed = true;
       Place(shown, origin, angles);
       return;
+    }
+
+    // What a model is made to leave behind as it flies: the smoke of a
+    // rocket, the blood of a gib, the trail of a monster's bolt.
+    if (shown.is_alias && origin != shown.origin)
+    {
+      const std::uint32_t flags = _models->GetFlags(shown.entity);
+      for (const auto &[flag, trail] : trails)
+      {
+        if ((flags & flag) != 0) { _level->particles.Trail(shown.origin, origin, trail); }
+      }
     }
 
     if (origin != shown.origin || angles != shown.angles)
@@ -683,6 +717,10 @@ namespace quake
     _world->SetVector3(_player, _rotation_field, {0.0f, QuakeSpace::ToEngineYaw(_view_yaw + punch[1]), 0.0f});
     if (_camera != 0) { _world->SetVector3(_camera, _rotation_field, {-(_view_pitch + punch[0]), 0.0f, 0.0f}); }
 
+    // the particles, seen from where the eyes are shown
+    const LevelAxes axes = LevelAxes::Of({_view_pitch + punch[0], _view_yaw + punch[1], 0.0f});
+    _particle_view.Show(*_world, _data->GetPalette(), _root, _level->particles.GetParticles(), eyes, axes.forward, axes.right, axes.up);
+
     // every sprite turns to where it is looked at from
     _sprites->Face(*_world, -(_view_pitch + punch[0]), QuakeSpace::ToEngineYaw(_view_yaw + punch[1]));
   }
@@ -693,6 +731,7 @@ namespace quake
     _frame_time = frame_time;
 
     _sprites->Update(world, *_data, _level->running.GetTime());
+    _level->particles.Advance(frame_time, _level->builtins.GetVariables().GetFloat("sv_gravity"));
 
     // The player looks around in every frame that is drawn, not in every
     // step of the world, so that aiming is as quick as the display. A
@@ -793,6 +832,7 @@ namespace quake
     _shown.clear();
     _models->Clear();
     _sprites->Clear();
+    _particle_view.Clear();
     _static_parts.clear();
     _tour.clear();
     _static_stops.clear();

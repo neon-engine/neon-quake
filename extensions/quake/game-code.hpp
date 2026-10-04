@@ -19,7 +19,9 @@
 #include "game/level-physics.hpp"
 #include "game/level-running.hpp"
 #include "game/level-stepping.hpp"
+#include "game/level-axes.hpp"
 #include "game/level-touching.hpp"
+#include "game/particle-system.hpp"
 #include "game/player-command.hpp"
 #include "game/player-movement.hpp"
 #include "game/qc-core-builtins.hpp"
@@ -29,6 +31,7 @@
 #include "game/qc-world-builtins.hpp"
 #include "level-view.hpp"
 #include "model-view.hpp"
+#include "particle-view.hpp"
 #include "sound-view.hpp"
 #include "sprite-view.hpp"
 
@@ -79,6 +82,9 @@ namespace quake
       // what steers the player
       PlayerMovement movement;
 
+      // the sparks, the blood, and the smoke that fly
+      ParticleSystem particles;
+
       Level(Progs progs, QcHost &host);
     };
 
@@ -121,6 +127,9 @@ namespace quake
 
     std::unique_ptr<Level> _level;
     std::vector<Shown> _shown;
+
+    // what draws the particles of the level
+    ParticleView _particle_view;
 
     // the models of the level that an entity which went left behind for good
     std::set<std::size_t> _static_parts;

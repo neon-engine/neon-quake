@@ -71,6 +71,8 @@ neon_add_project(quake
         extensions/quake/level-view.hpp
         extensions/quake/model-view.cpp
         extensions/quake/model-view.hpp
+        extensions/quake/particle-view.cpp
+        extensions/quake/particle-view.hpp
         extensions/quake/sound-view.cpp
         extensions/quake/sound-view.hpp
         extensions/quake/sprite-view.cpp
