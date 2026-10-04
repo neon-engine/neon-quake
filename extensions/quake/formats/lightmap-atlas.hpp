@@ -6,9 +6,11 @@
 #include <vector>
 
 #include "bsp-mesh.hpp"
+#include "light-styles.hpp"
 #include "lightmap-atlas-block.hpp"
 #include "lightmap-atlas-page.hpp"
 #include "lightmap-atlas-vertex.hpp"
+#include "lit-file.hpp"
 
 namespace quake
 {
@@ -19,10 +21,18 @@ namespace quake
   ///
   /// It is made from a `BspMesh` and keeps nothing of it.
   ///
-  /// **Which light.** Only the first lightmap of a face is taken, the one of
-  /// its first style, which is the light that never changes in nearly every
-  /// face. The further ones, of lights that flicker or are switched, are
-  /// left out for now, so such a light is missing from the atlas.
+  /// **Which light.** A face has up to four lightmaps, each of a style: a
+  /// light that stays as it is, one that flickers, one the game switches.
+  /// What is shown of a face is the sum of its lightmaps, each multiplied by
+  /// what its style is worth at the moment, and no brighter than a byte
+  /// holds. The atlas keeps the samples of every lightmap, and `Compose`
+  /// makes the pixels from them for the values of the styles it is given.
+  /// After `Build` the pages show every style at 1, which is all there is
+  /// to see of a level whose lights never change.
+  ///
+  /// **Which colour.** The level says how bright a sample is, and the pages
+  /// are grey then. With the `LitFile` of the level, the samples have the
+  /// colours of that file instead.
   ///
   /// **How bright a sample is.** The bytes are handed out as the level has
   /// them, and the game doubles them: a sample of `normal_brightness`, 128,
@@ -97,13 +107,48 @@ namespace quake
     /// in the same order.
     std::vector<LightmapAtlasBlock> blocks;
 
-    /// Packs the lightmaps of a mesh. `largest_side` is how many pixels a
-    /// page may be wide and high at most. Returns false, says why in
+    /// The samples of all lightmaps of all faces that have one, three bytes
+    /// for each: red, green, and blue, which are the same without coloured
+    /// light. `LightmapAtlasBlock::first_sample` says where those of a face
+    /// start.
+    std::vector<std::uint8_t> samples;
+
+    /// The styles that light any face, each once, from the lowest. A host
+    /// that finds only 0 here never needs to compose.
+    std::vector<std::uint8_t> styles;
+
+    /// What each style was worth when the pages were composed last. All 1
+    /// after `Build`.
+    LightStyles::Values values{};
+
+    /// Packs the lightmaps of a mesh, and composes the pages with every
+    /// style at 1. `largest_side` is how many pixels a page may be wide and
+    /// high at most. `lit` is the coloured light of the level the mesh was
+    /// made from, or null for grey light. Returns false, says why in
     /// `error`, and stays as it was when `largest_side` is smaller than
     /// `smallest_side`, when a face names vertices the mesh does not have,
     /// when the lightmap of a face has not the bytes its size and styles ask
-    /// for, or when a face with its border is larger than a page.
-    bool Build(const BspMesh &mesh, std::string &error, std::uint32_t largest_side = default_largest_side);
+    /// for, when a face with its border is larger than a page, or when the
+    /// coloured light has not the samples of a face.
+    bool Build(
+      const BspMesh &mesh,
+      std::string &error,
+      std::uint32_t largest_side = default_largest_side,
+      const LitFile *lit = nullptr);
+
+    /// Makes the pixels anew for what the styles are worth now, and returns
+    /// the pages that have to be handed to the renderer again, from the
+    /// lowest. Only faces with a style whose value is another than at the
+    /// last time are made anew, and only their own pixels and border are
+    /// written, so that calling this with the same values costs next to
+    /// nothing and returns no page, and that what a host painted elsewhere
+    /// on a page stays.
+    ///
+    /// A pixel is the sum of the samples of its face, each multiplied by
+    /// the value of its style, and 255 when the sum is more. A value counts
+    /// in steps of a 256th, and below 0 as 0. A style of `LightStyles::count`
+    /// or above, which no light of the game has, is always worth 1.
+    std::vector<std::uint32_t> Compose(const LightStyles::Values &new_values);
   };
 } // quake
 

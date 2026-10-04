@@ -15,9 +15,10 @@ namespace quake
     std::uint32_t height = 0;
 
     /// Its pixels, row after row from the top, four bytes for each: red,
-    /// green, and blue, which are all the sample of the light, and how solid
-    /// it is, which is always 255. This is what the engine takes as a
-    /// picture. A pixel no face uses is black.
+    /// green, and blue of the light, which are all the same when the level
+    /// has no coloured light, and how solid it is, which is always 255.
+    /// This is what the engine takes as a picture. A pixel no face uses is
+    /// black.
     std::vector<std::uint8_t> pixels;
   };
 } // quake

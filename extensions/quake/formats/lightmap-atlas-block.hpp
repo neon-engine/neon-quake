@@ -1,7 +1,11 @@
 #ifndef QUAKE_LIGHTMAP_ATLAS_BLOCK_HPP
 #define QUAKE_LIGHTMAP_ATLAS_BLOCK_HPP
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
+
+#include "bsp-face.hpp"
 
 namespace quake
 {
@@ -28,6 +32,26 @@ namespace quake
     /// Whether these are samples of the face. When not, the face has no
     /// lightmap, and shares the fully bright block with all others like it.
     bool is_lit = false;
+
+    /// What lights each of the lightmaps of the face, as the face says it:
+    /// `BspFace::no_style` ends the list. A face without a lightmap has
+    /// none.
+    std::array<std::uint8_t, 4> styles{
+      BspFace::no_style, BspFace::no_style, BspFace::no_style, BspFace::no_style};
+
+    /// Where the samples of the face start in `LightmapAtlas::samples`, in
+    /// bytes: `width * height * 3` of them for each style, one style after
+    /// the other.
+    std::size_t first_sample = 0;
+
+    /// How many lightmaps the face has, one for each style up to the first
+    /// that is `BspFace::no_style`.
+    [[nodiscard]] std::size_t CountStyles() const
+    {
+      std::size_t count = 0;
+      while (count < styles.size() && styles[count] != BspFace::no_style) { count++; }
+      return count;
+    }
   };
 } // quake
 

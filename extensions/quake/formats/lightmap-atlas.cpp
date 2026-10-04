@@ -1,6 +1,7 @@
 #include "lightmap-atlas.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <utility>
 
@@ -70,18 +71,68 @@ namespace quake
       return page + 1;
     }
 
-    /// Makes a pixel of a page grey with the brightness of a sample.
-    void paint(
-      LightmapAtlasPage &page,
-      const std::uint32_t x,
-      const std::uint32_t y,
-      const std::uint8_t sample)
+    /// What each style is worth in 256ths, which is what the pixels are
+    /// counted with: whole numbers, as the original counts them.
+    using Scales = std::array<std::uint32_t, LightStyles::count>;
+
+    /// A value in 256ths. Nothing below 0, which also takes what is not a
+    /// number, and nothing so large that a sum of four could overflow.
+    std::uint32_t scale_of(const float value)
     {
-      const std::size_t at = (static_cast<std::size_t>(y) * page.width + x) * 4;
-      page.pixels[at] = sample;
-      page.pixels[at + 1] = sample;
-      page.pixels[at + 2] = sample;
-      page.pixels[at + 3] = 255;
+      if (!(value > 0.0f)) { return 0; }
+      return static_cast<std::uint32_t>(std::min(value, 256.0f) * 256.0f + 0.5f);
+    }
+
+    Scales scales_of(const LightStyles::Values &values)
+    {
+      Scales scales{};
+      for (std::size_t style = 0; style < scales.size(); style++) { scales[style] = scale_of(values[style]); }
+      return scales;
+    }
+
+    /// Makes the pixels of the block of a lit face, and of the border
+    /// around it, from its samples. Every pixel takes the sample nearest to
+    /// it: a pixel of the block its own, a pixel of the border the one at
+    /// the edge next to it.
+    void compose(LightmapAtlas &atlas, const LightmapAtlasBlock &block, const Scales &scales)
+    {
+      constexpr std::uint32_t border = LightmapAtlas::border;
+      LightmapAtlasPage &page = atlas.pages[block.page];
+
+      const std::size_t style_count = block.CountStyles();
+      const std::size_t layer_size = static_cast<std::size_t>(block.width) * block.height * 3;
+      std::array<std::uint32_t, 4> scale_of_layer{};
+      for (std::size_t layer = 0; layer < style_count; layer++)
+      {
+        const std::uint8_t style = block.styles[layer];
+        scale_of_layer[layer] = style < scales.size() ? scales[style] : 256;
+      }
+
+      for (std::uint32_t row = 0; row < block.height + 2 * border; row++)
+      {
+        const std::uint32_t sample_row = std::clamp(row, border, block.height + border - 1) - border;
+        for (std::uint32_t column = 0; column < block.width + 2 * border; column++)
+        {
+          const std::uint32_t sample_column = std::clamp(column, border, block.width + border - 1) - border;
+          const std::size_t sample =
+            block.first_sample + (static_cast<std::size_t>(sample_row) * block.width + sample_column) * 3;
+
+          std::array<std::uint32_t, 3> sum{};
+          for (std::size_t layer = 0; layer < style_count; layer++)
+          {
+            const std::uint8_t *colour = &atlas.samples[sample + layer * layer_size];
+            for (std::size_t part = 0; part < 3; part++) { sum[part] += colour[part] * scale_of_layer[layer]; }
+          }
+
+          const std::size_t at =
+            (static_cast<std::size_t>(block.y - border + row) * page.width + (block.x - border + column)) * 4;
+          for (std::size_t part = 0; part < 3; part++)
+          {
+            page.pixels[at + part] = static_cast<std::uint8_t>(std::min<std::uint32_t>(sum[part] >> 8, 255));
+          }
+          page.pixels[at + 3] = 255;
+        }
+      }
     }
 
     bool refuse(std::string &error, const std::size_t face, const std::string &reason)
@@ -91,7 +142,11 @@ namespace quake
     }
   }
 
-  bool LightmapAtlas::Build(const BspMesh &mesh, std::string &error, const std::uint32_t largest_side)
+  bool LightmapAtlas::Build(
+    const BspMesh &mesh,
+    std::string &error,
+    const std::uint32_t largest_side,
+    const LitFile *lit)
   {
     if (largest_side < smallest_side)
     {
@@ -136,6 +191,16 @@ namespace quake
         return refuse(error, face_index, "has a lightmap of " + std::to_string(face.lightmap_width) + " by " +
           std::to_string(face.lightmap_height) + " samples, which with its border is larger than a page of " +
           std::to_string(largest_side) + " by " + std::to_string(largest_side) + " pixels");
+      }
+
+      // the colours of a face lie where its bytes lie in the lighting
+      if (lit != nullptr && (face.light_offset < 0 ||
+        static_cast<std::uint64_t>(face.light_offset) > lit->GetSampleCount() ||
+        expected > lit->GetSampleCount() - static_cast<std::uint64_t>(face.light_offset)))
+      {
+        return refuse(error, face_index, "has " + std::to_string(expected) + " samples from " +
+          std::to_string(face.light_offset) + " of the lighting, and the coloured light has " +
+          std::to_string(lit->GetSampleCount()));
       }
 
       Item item;
@@ -195,6 +260,9 @@ namespace quake
       for (std::size_t at = 3; at < page.pixels.size(); at += 4) { page.pixels[at] = 255; }
     }
 
+    atlas.values.fill(1.0f);
+    const Scales scales = scales_of(atlas.values);
+
     LightmapAtlasBlock bright_block;
     for (const Item &item : items)
     {
@@ -206,7 +274,8 @@ namespace quake
         {
           for (std::uint32_t column = 0; column < item.width; column++)
           {
-            paint(page, item.x + column, item.y + row, fully_bright);
+            const std::size_t at = (static_cast<std::size_t>(item.y + row) * page_side + item.x + column) * 4;
+            page.pixels[at] = page.pixels[at + 1] = page.pixels[at + 2] = fully_bright;
           }
         }
         bright_block.page = item.page;
@@ -219,20 +288,6 @@ namespace quake
 
       const BspMeshFace &face = mesh.faces[item.face];
 
-      // Every pixel of the item takes the sample nearest to it: a pixel of
-      // the block its own, a pixel of the border the one at the edge next
-      // to it. Only the first lightmap is read, the one of the first style.
-      for (std::uint32_t row = 0; row < item.height; row++)
-      {
-        const std::uint32_t sample_row = std::clamp(row, border, face.lightmap_height + border - 1) - border;
-        for (std::uint32_t column = 0; column < item.width; column++)
-        {
-          const std::uint32_t sample_column = std::clamp(column, border, face.lightmap_width + border - 1) - border;
-          const std::size_t sample = static_cast<std::size_t>(sample_row) * face.lightmap_width + sample_column;
-          paint(page, item.x + column, item.y + row, face.lightmap[sample]);
-        }
-      }
-
       LightmapAtlasBlock &block = atlas.blocks[item.face];
       block.page = item.page;
       block.x = item.x + border;
@@ -240,7 +295,28 @@ namespace quake
       block.width = face.lightmap_width;
       block.height = face.lightmap_height;
       block.is_lit = true;
+      block.styles = face.light_styles;
+      block.first_sample = atlas.samples.size();
+
+      // the samples of all its lightmaps: the colours of the coloured light
+      // when there is one, and the brightness of the level three times over
+      // when not
+      if (lit != nullptr)
+      {
+        const auto start = lit->GetColours().begin() + static_cast<std::ptrdiff_t>(face.light_offset) * 3;
+        atlas.samples.insert(atlas.samples.end(), start, start + static_cast<std::ptrdiff_t>(face.lightmap.size()) * 3);
+      } else
+      {
+        for (const std::uint8_t sample : face.lightmap) { atlas.samples.insert(atlas.samples.end(), 3, sample); }
+      }
+
+      for (std::size_t layer = 0; layer < block.CountStyles(); layer++) { atlas.styles.push_back(block.styles[layer]); }
+
+      compose(atlas, block, scales);
     }
+
+    std::ranges::sort(atlas.styles);
+    atlas.styles.erase(std::ranges::unique(atlas.styles).begin(), atlas.styles.end());
 
     for (std::size_t face_index = 0; face_index < mesh.faces.size(); face_index++)
     {
@@ -278,5 +354,46 @@ namespace quake
 
     *this = std::move(atlas);
     return true;
+  }
+
+  std::vector<std::uint32_t> LightmapAtlas::Compose(const LightStyles::Values &new_values)
+  {
+    const Scales old_scales = scales_of(values);
+    const Scales new_scales = scales_of(new_values);
+    values = new_values;
+
+    // most of the time no style is worth another value than before
+    std::array<bool, LightStyles::count> is_changed{};
+    bool any_changed = false;
+    for (std::size_t style = 0; style < new_scales.size(); style++)
+    {
+      is_changed[style] = old_scales[style] != new_scales[style];
+      any_changed = any_changed || is_changed[style];
+    }
+    if (!any_changed) { return {}; }
+
+    std::vector<bool> page_changed(pages.size(), false);
+    for (const LightmapAtlasBlock &block : blocks)
+    {
+      if (!block.is_lit || block.page >= pages.size()) { continue; }
+
+      bool face_changed = false;
+      for (std::size_t layer = 0; layer < block.CountStyles(); layer++)
+      {
+        const std::uint8_t style = block.styles[layer];
+        face_changed = face_changed || (style < is_changed.size() && is_changed[style]);
+      }
+      if (!face_changed) { continue; }
+
+      compose(*this, block, new_scales);
+      page_changed[block.page] = true;
+    }
+
+    std::vector<std::uint32_t> changed;
+    for (std::uint32_t page = 0; page < page_changed.size(); page++)
+    {
+      if (page_changed[page]) { changed.push_back(page); }
+    }
+    return changed;
   }
 } // quake

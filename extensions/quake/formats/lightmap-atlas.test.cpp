@@ -1,5 +1,6 @@
 #include "lightmap-atlas.hpp"
 
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -23,6 +24,8 @@ namespace
   using quake::LightmapAtlasBlock;
   using quake::LightmapAtlasPage;
   using quake::LightmapAtlasVertex;
+  using quake::LightStyles;
+  using quake::LitFile;
   using ::testing::Each;
   using ::testing::ElementsAre;
   using ::testing::IsEmpty;
@@ -88,6 +91,23 @@ namespace
     EXPECT_EQ(page.pixels[at + 2], page.pixels[at]);
     EXPECT_EQ(page.pixels[at + 3], 255);
     return page.pixels[at];
+  }
+
+  /// The four bytes of a pixel of a page, for light that has a colour.
+  std::vector<std::uint8_t> ColourAt(const LightmapAtlasPage &page, const std::uint32_t x, const std::uint32_t y)
+  {
+    EXPECT_LT(x, page.width);
+    EXPECT_LT(y, page.height);
+    const std::size_t at = (static_cast<std::size_t>(y) * page.width + x) * 4;
+    return {page.pixels.begin() + at, page.pixels.begin() + at + 4};
+  }
+
+  /// The bytes of a file of coloured light with these colours.
+  std::vector<std::uint8_t> MakeLit(const std::vector<std::array<std::uint8_t, 3>> &colours)
+  {
+    std::vector<std::uint8_t> bytes = {'Q', 'L', 'I', 'T', 1, 0, 0, 0};
+    for (const auto &colour : colours) { bytes.insert(bytes.end(), colour.begin(), colour.end()); }
+    return bytes;
   }
 
   /// The light of the pixel the coordinates of a vertex point into, which
@@ -432,20 +452,265 @@ namespace
     for (const LightmapAtlasVertex &vertex : atlas.vertices) { EXPECT_EQ(SampleAt(atlas, vertex), 255); }
   }
 
-  TEST(LightmapAtlasTest, TakesOnlyTheFirstLightmapOfAFaceWithSeveralStyles)
+  TEST(LightmapAtlasTest, ShowsTheSumOfTheLightmapsOfAFaceWithEveryStyleAtOneWhenItIsBuilt)
   {
     BspMesh mesh;
-    BspMeshFace &face = AddFace(mesh, 2, 1, {10, 20, 200, 210});
+    BspMeshFace &face = AddFace(mesh, 2, 1, {10, 20, 30, 200});
     face.light_styles = {0, 3, 255, 255};
 
     LightmapAtlas atlas;
     std::string error;
     ASSERT_TRUE(atlas.Build(mesh, error)) << error;
 
-    EXPECT_EQ(PixelAt(atlas.pages[0], 0, 1), 10);
+    EXPECT_THAT(atlas.values, Each(1.0f));
+    EXPECT_THAT(atlas.styles, ElementsAre(0, 3));
+    EXPECT_THAT(atlas.blocks[0].styles, ElementsAre(0, 3, 255, 255));
+    EXPECT_EQ(atlas.blocks[0].CountStyles(), 2u);
+
+    // 10 + 30, and 20 + 200, with the border around them
+    EXPECT_EQ(PixelAt(atlas.pages[0], 0, 1), 40);
+    EXPECT_EQ(PixelAt(atlas.pages[0], 1, 1), 40);
+    EXPECT_EQ(PixelAt(atlas.pages[0], 2, 1), 220);
+    EXPECT_EQ(PixelAt(atlas.pages[0], 3, 1), 220);
+  }
+
+  TEST(LightmapAtlasTest, ComposesEveryLightmapOfAFaceMultipliedByWhatItsStyleIsWorth)
+  {
+    BspMesh mesh;
+    BspMeshFace &face = AddFace(mesh, 2, 1, {100, 40, 60, 200});
+    face.light_styles = {0, 3, 255, 255};
+
+    LightmapAtlas atlas;
+    std::string error;
+    ASSERT_TRUE(atlas.Build(mesh, error)) << error;
+
+    LightStyles::Values values;
+    values.fill(1.0f);
+    values[0] = 0.5f;
+    values[3] = 0.25f;
+    EXPECT_THAT(atlas.Compose(values), ElementsAre(0u));
+    EXPECT_EQ(atlas.values, values);
+
+    // 100 * 0.5 + 60 * 0.25, and 40 * 0.5 + 200 * 0.25
+    EXPECT_EQ(PixelAt(atlas.pages[0], 1, 1), 65);
+    EXPECT_EQ(PixelAt(atlas.pages[0], 2, 1), 70);
+
+    // the border follows
+    EXPECT_EQ(PixelAt(atlas.pages[0], 0, 0), 65);
+    EXPECT_EQ(PixelAt(atlas.pages[0], 3, 2), 70);
+
+    // and back, which loses nothing: the samples are kept, not the picture
+    values.fill(1.0f);
+    EXPECT_THAT(atlas.Compose(values), ElementsAre(0u));
+    EXPECT_EQ(PixelAt(atlas.pages[0], 1, 1), 160);
+    EXPECT_EQ(PixelAt(atlas.pages[0], 2, 1), 240);
+  }
+
+  TEST(LightmapAtlasTest, KeepsLightBrighterThanNormalAndStopsAtWhatAByteHolds)
+  {
+    BspMesh mesh;
+    BspMeshFace &face = AddFace(mesh, 3, 1, {100, 200, 10, 60, 100, 4});
+    face.light_styles = {0, 1, 255, 255};
+
+    LightmapAtlas atlas;
+    std::string error;
+    ASSERT_TRUE(atlas.Build(mesh, error)) << error;
+
+    // 200 + 100 is more than a byte holds
+    EXPECT_EQ(PixelAt(atlas.pages[0], 1, 1), 160);
+    EXPECT_EQ(PixelAt(atlas.pages[0], 2, 1), 255);
+    EXPECT_EQ(PixelAt(atlas.pages[0], 3, 1), 14);
+
+    // a style of 2 doubles its lightmap
+    LightStyles::Values values;
+    values.fill(1.0f);
+    values[1] = 2.0f;
+    atlas.Compose(values);
+    EXPECT_EQ(PixelAt(atlas.pages[0], 1, 1), 220);
+    EXPECT_EQ(PixelAt(atlas.pages[0], 2, 1), 255);
+    EXPECT_EQ(PixelAt(atlas.pages[0], 3, 1), 18);
+
+    // what is below 0 is dark, and takes nothing from the other lightmap
+    values[1] = -3.0f;
+    atlas.Compose(values);
+    EXPECT_EQ(PixelAt(atlas.pages[0], 1, 1), 100);
+    EXPECT_EQ(PixelAt(atlas.pages[0], 2, 1), 200);
+  }
+
+  TEST(LightmapAtlasTest, LeavesOutTheLightOfASwitchedStyleThatIsOff)
+  {
+    BspMesh mesh;
+    BspMeshFace &face = AddFace(mesh, 2, 1, {10, 20, 90, 120});
+    face.light_styles = {0, 32, 255, 255};
+
+    LightmapAtlas atlas;
+    std::string error;
+    ASSERT_TRUE(atlas.Build(mesh, error)) << error;
+    EXPECT_EQ(PixelAt(atlas.pages[0], 1, 1), 100);
+    EXPECT_EQ(PixelAt(atlas.pages[0], 2, 1), 140);
+
+    LightStyles styles;
+    styles.Set(32, "a");
+    EXPECT_THAT(atlas.Compose(styles.GetValues(0.0)), ElementsAre(0u));
     EXPECT_EQ(PixelAt(atlas.pages[0], 1, 1), 10);
     EXPECT_EQ(PixelAt(atlas.pages[0], 2, 1), 20);
-    EXPECT_EQ(PixelAt(atlas.pages[0], 3, 1), 20);
+
+    styles.Set(32, "m");
+    EXPECT_THAT(atlas.Compose(styles.GetValues(0.0)), ElementsAre(0u));
+    EXPECT_EQ(PixelAt(atlas.pages[0], 1, 1), 100);
+    EXPECT_EQ(PixelAt(atlas.pages[0], 2, 1), 140);
+  }
+
+  TEST(LightmapAtlasTest, ComposesOnlyThePagesWithAFaceOfAStyleThatChanged)
+  {
+    // four blocks of 6 by 6 samples fill a page of 16 by 16 pixels: faces
+    // 0 to 3 are on page 0, 4 to 7 on page 1, and 8 and 9 on page 2
+    BspMesh mesh;
+    for (int i = 0; i < 10; i++) { AddFace(mesh, 6, 6, std::vector<std::uint8_t>(36, 100)); }
+    mesh.faces[5].lightmap.resize(72, 50);
+    mesh.faces[5].light_styles = {0, 4, 255, 255};
+    mesh.faces[9].light_styles = {33, 255, 255, 255};
+
+    LightmapAtlas atlas;
+    std::string error;
+    ASSERT_TRUE(atlas.Build(mesh, error, 16)) << error;
+    ASSERT_EQ(atlas.pages.size(), 3u);
+    EXPECT_THAT(atlas.styles, ElementsAre(0, 4, 33));
+
+    // the same values again change nothing
+    LightStyles::Values values;
+    values.fill(1.0f);
+    EXPECT_THAT(atlas.Compose(values), IsEmpty());
+
+    // a style no face has changes nothing
+    values[7] = 0.0f;
+    EXPECT_THAT(atlas.Compose(values), IsEmpty());
+
+    const std::vector<LightmapAtlasPage> before = atlas.pages;
+    values[4] = 0.5f;
+    EXPECT_THAT(atlas.Compose(values), ElementsAre(1u));
+    EXPECT_EQ(atlas.pages[0].pixels, before[0].pixels);
+    EXPECT_EQ(atlas.pages[2].pixels, before[2].pixels);
+    EXPECT_EQ(SampleAt(atlas, atlas.vertices[mesh.faces[5].first_vertex]), 125);
+    EXPECT_EQ(SampleAt(atlas, atlas.vertices[mesh.faces[4].first_vertex]), 100);
+
+    values[33] = 0.0f;
+    EXPECT_THAT(atlas.Compose(values), ElementsAre(2u));
+    EXPECT_EQ(SampleAt(atlas, atlas.vertices[mesh.faces[9].first_vertex]), 0);
+    EXPECT_EQ(SampleAt(atlas, atlas.vertices[mesh.faces[8].first_vertex]), 100);
+
+    // the light that stays as it is can be changed as any other
+    values[0] = 2.0f;
+    EXPECT_THAT(atlas.Compose(values), ElementsAre(0u, 1u, 2u));
+    EXPECT_EQ(SampleAt(atlas, atlas.vertices[mesh.faces[0].first_vertex]), 200);
+    EXPECT_EQ(SampleAt(atlas, atlas.vertices[mesh.faces[5].first_vertex]), 225);
+  }
+
+  TEST(LightmapAtlasTest, WritesOnlyThePixelsOfFacesThatChangeWhenItComposes)
+  {
+    BspMesh mesh;
+    AddFace(mesh, 0, 0, {});
+    AddFace(mesh, 2, 2, {1, 2, 3, 4}).light_styles = {5, 255, 255, 255};
+    AddFace(mesh, 2, 2, {5, 6, 7, 8});
+
+    LightmapAtlas atlas;
+    std::string error;
+    ASSERT_TRUE(atlas.Build(mesh, error)) << error;
+
+    // what a host painted over the bright block, and on a face that stays
+    const LightmapAtlasBlock &bright = atlas.blocks[0];
+    const LightmapAtlasBlock &steady = atlas.blocks[2];
+    LightmapAtlasPage &page = atlas.pages[0];
+    page.pixels[(bright.y * page.width + bright.x) * 4] = 7;
+    page.pixels[(steady.y * page.width + steady.x) * 4] = 9;
+
+    LightStyles::Values values;
+    values.fill(1.0f);
+    values[5] = 0.0f;
+    EXPECT_THAT(atlas.Compose(values), ElementsAre(0u));
+
+    EXPECT_EQ(page.pixels[(bright.y * page.width + bright.x) * 4], 7);
+    EXPECT_EQ(page.pixels[(steady.y * page.width + steady.x) * 4], 9);
+    EXPECT_EQ(SampleAt(atlas, atlas.vertices[mesh.faces[1].first_vertex]), 0);
+  }
+
+  TEST(LightmapAtlasTest, TakesAStyleNoLightOfTheGameHasAsOne)
+  {
+    BspMesh mesh;
+    AddFace(mesh, 1, 1, {77}).light_styles = {200, 255, 255, 255};
+
+    LightmapAtlas atlas;
+    std::string error;
+    ASSERT_TRUE(atlas.Build(mesh, error)) << error;
+    EXPECT_EQ(PixelAt(atlas.pages[0], 1, 1), 77);
+
+    LightStyles::Values values{};
+    EXPECT_THAT(atlas.Compose(values), IsEmpty());
+    EXPECT_EQ(PixelAt(atlas.pages[0], 1, 1), 77);
+  }
+
+  TEST(LightmapAtlasTest, TakesTheColoursOfTheColouredLightWhenItIsGivenOne)
+  {
+    // the lighting of the level: two bytes no face uses, then the two
+    // lightmaps of a face of 2 by 1 samples
+    BspMesh mesh;
+    BspMeshFace &face = AddFace(mesh, 2, 1, {50, 60, 70, 80});
+    face.light_styles = {0, 2, 255, 255};
+    face.light_offset = 2;
+
+    LitFile lit;
+    std::string error;
+    ASSERT_TRUE(lit.Read(MakeLit({
+      {9, 9, 9}, {9, 9, 9},
+      {100, 0, 20}, {0, 40, 250},
+      {10, 20, 30}, {200, 100, 50}}), 6, error)) << error;
+
+    LightmapAtlas atlas;
+    ASSERT_TRUE(atlas.Build(mesh, error, LightmapAtlas::default_largest_side, &lit)) << error;
+
+    EXPECT_THAT(ColourAt(atlas.pages[0], 1, 1), ElementsAre(110, 20, 50, 255));
+    EXPECT_THAT(ColourAt(atlas.pages[0], 2, 1), ElementsAre(200, 140, 255, 255));
+
+    // the border has the colour of the sample next to it
+    EXPECT_THAT(ColourAt(atlas.pages[0], 0, 0), ElementsAre(110, 20, 50, 255));
+    EXPECT_THAT(ColourAt(atlas.pages[0], 3, 2), ElementsAre(200, 140, 255, 255));
+
+    LightStyles::Values values;
+    values.fill(1.0f);
+    values[2] = 0.5f;
+    atlas.Compose(values);
+    EXPECT_THAT(ColourAt(atlas.pages[0], 1, 1), ElementsAre(105, 10, 35, 255));
+    EXPECT_THAT(ColourAt(atlas.pages[0], 2, 1), ElementsAre(100, 90, 255, 255));
+
+    // without the file, the same mesh is grey as before
+    ASSERT_TRUE(atlas.Build(mesh, error)) << error;
+    EXPECT_EQ(PixelAt(atlas.pages[0], 1, 1), 120);
+    EXPECT_EQ(PixelAt(atlas.pages[0], 2, 1), 140);
+  }
+
+  TEST(LightmapAtlasTest, RefusesAColouredLightThatHasNotTheSamplesOfAFace)
+  {
+    LitFile lit;
+    std::string error;
+    ASSERT_TRUE(lit.Read(MakeLit({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}), 3, error)) << error;
+
+    BspMesh fits;
+    AddFace(fits, 2, 1, {1, 2}).light_offset = 1;
+    LightmapAtlas atlas;
+    EXPECT_TRUE(atlas.Build(fits, error, LightmapAtlas::default_largest_side, &lit)) << error;
+
+    BspMesh past_the_end;
+    AddFace(past_the_end, 2, 1, {1, 2}).light_offset = 2;
+    EXPECT_FALSE(atlas.Build(past_the_end, error, LightmapAtlas::default_largest_side, &lit));
+    EXPECT_EQ(error, "face 0 has 2 samples from 2 of the lighting, and the coloured light has 3");
+
+    BspMesh nowhere;
+    AddFace(nowhere, 2, 1, {1, 2}).light_offset = -1;
+    EXPECT_FALSE(atlas.Build(nowhere, error, LightmapAtlas::default_largest_side, &lit));
+    EXPECT_EQ(error, "face 0 has 2 samples from -1 of the lighting, and the coloured light has 3");
+
+    // and it stays as it was
+    EXPECT_THAT(ColourAt(atlas.pages[0], 1, 1), ElementsAre(4, 5, 6, 255));
   }
 
   TEST(LightmapAtlasTest, MakesNothingOfAMeshWithoutFaces)
