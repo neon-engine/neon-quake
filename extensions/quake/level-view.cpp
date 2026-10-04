@@ -369,14 +369,15 @@ namespace quake
     const BspLightSample sample = _light.Sample(place, {}, BspLightFilter::Bilinear);
 
     // The original shows a model with its colours times its light over 200,
-    // counted as a screen is given them. The engine multiplies light itself,
-    // so the factor is taken to the power of 2.2, and the level is shown
-    // with more contrast, as its walls are.
+    // counted as a screen is given them, and the ports of today twice as
+    // bright, as vkQuake does unless told otherwise: over 100. The engine
+    // multiplies light itself, so the factor is taken to the power of 2.2,
+    // and the level is shown with more contrast, as its walls are.
     std::array<float, 3> light{};
     const float samples[3] = {sample.red, sample.green, sample.blue};
     for (std::size_t i = 0; i < 3; i++)
     {
-      const float on_screen = std::clamp(std::max(samples[i], least), 0.0f, 255.0f) / 200.0f;
+      const float on_screen = std::clamp(std::max(samples[i], least), 0.0f, 255.0f) / 100.0f;
       light[i] = std::pow(on_screen, 2.2f) * model_contrast;
     }
     return light;

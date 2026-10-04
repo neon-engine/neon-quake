@@ -11,7 +11,11 @@
 #include "formats/entity-text.hpp"
 #include "formats/progs.hpp"
 #include "formats/quake-space.hpp"
+#include "game/center-text.hpp"
+#include "game/hud-text.hpp"
+#include "game/intermission.hpp"
 #include "game/level-spawning.hpp"
+#include "game/player-stats.hpp"
 #include "game/qc-builtin-number.hpp"
 #include "game/qc-flag.hpp"
 #include "game/qc-move-type.hpp"
@@ -265,7 +269,17 @@ namespace quake
     _line += text;
     if (!_line.ends_with('\n')) { return; }
 
-    if (const std::string plain = to_plain(_line); !plain.empty()) { _world->Info(plain); }
+    if (const std::string plain = to_plain(_line); !plain.empty())
+    {
+      _world->Info(plain);
+
+      // and the player reads it on the screen for a while
+      if (_level != nullptr)
+      {
+        _messages.push_back({plain, _level->running.GetTime()});
+        if (_messages.size() > most_messages) { _messages.erase(_messages.begin()); }
+      }
+    }
     _line.clear();
   }
 
@@ -278,6 +292,11 @@ namespace quake
   {
     // what is shown in the middle of the screen is whole, and ends with none
     if (const std::string plain = to_plain(text); !plain.empty()) { _world->Info(plain); }
+
+    // the lines of it are kept as they are, for the screen
+    _center_text.clear();
+    for (const char letter : text) { _center_text += static_cast<char>(static_cast<unsigned char>(letter) & 0x7fu); }
+    _center_at = _level != nullptr ? _level->running.GetTime() : 0.0;
   }
 
   void GameCode::Error(const std::int32_t self, const std::string_view text)
@@ -684,6 +703,62 @@ namespace quake
     _has_eyes = true;
   }
 
+  void GameCode::ShowHud()
+  {
+    if (_camera == 0) { return; }
+
+    QcMachine &machine = _level->machine;
+    const QcFields &fields = _level->fields;
+    const double now = _level->running.GetTime();
+    const auto time = static_cast<float>(now);
+
+    PlayerStats stats = PlayerStats::Read(machine, fields, _level->globals, player_entity);
+    stats.time = time;
+    _status_bar.Watch(stats, time);
+
+    // The game code counts what a hit took since it was last asked, which
+    // is what makes the face on the bar wince.
+    if (fields.dmg_take.Get(machine, player_entity) > 0.0f || fields.dmg_save.Get(machine, player_entity) > 0.0f)
+    {
+      _status_bar.ShowPain(time);
+      fields.dmg_take.Set(machine, player_entity, 0.0f);
+      fields.dmg_save.Set(machine, player_entity, 0.0f);
+    }
+
+    std::vector<HudPicture> pictures;
+    if (IsPlayerHeld() && stats.health > 0)
+    {
+      // a level that is over shows its counts, with the time it took
+      if (_completed_time < 0.0f) { _completed_time = time; }
+      pictures = Intermission::Layout(stats, _completed_time, _hud.GetWidth(*_world, *_data, "gfx/complete.lmp"));
+    } else
+    {
+      _completed_time = -1.0f;
+
+      StatusBarOptions options;
+      options.shows_scores = _world->IsActionDown("scores");
+      pictures = _status_bar.Layout(stats, time, options);
+
+      // the lines the game code printed, the newest last, each for a while
+      std::erase_if(_messages, [now](const Message &message) { return now - message.at > message_seconds; });
+      std::int32_t line = 0;
+      for (const Message &message : _messages)
+      {
+        HudText::AddLine(pictures, message.text, 8, 4 + line * HudPicture::character_size, HudAnchor::Center);
+        line++;
+      }
+    }
+
+    if (!_center_text.empty())
+    {
+      const std::vector<HudPicture> words = CenterText::Layout(_center_text, static_cast<float>(now - _center_at));
+      if (words.empty()) { _center_text.clear(); }
+      pictures.insert(pictures.end(), words.begin(), words.end());
+    }
+
+    _hud.Show(*_world, *_data, _camera, pictures);
+  }
+
   void GameCode::ShowView(const float blend)
   {
     if (_player == 0)
@@ -725,6 +800,8 @@ namespace quake
     // the particles, seen from where the eyes are shown
     const LevelAxes axes = LevelAxes::Of({_view_pitch + punch[0], _view_yaw + punch[1], 0.0f});
     _particle_view.Show(*_world, _data->GetPalette(), _root, _level->particles.GetParticles(), eyes, axes.forward, axes.right, axes.up);
+
+    ShowHud();
 
     // every sprite turns to where it is looked at from
     _sprites->Face(*_world, -(_view_pitch + punch[0]), QuakeSpace::ToEngineYaw(_view_yaw + punch[1]));
@@ -852,6 +929,10 @@ namespace quake
     _weapon = 0;
     _impulse = 0.0f;
     _has_eyes = false;
+    _status_bar.Forget();
+    _messages.clear();
+    _center_text.clear();
+    _completed_time = -1.0f;
     _failures_said = 0;
     _line.clear();
   }

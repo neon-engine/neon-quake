@@ -23,7 +23,10 @@ lies where the player fell and starts the level again with the fire button,
 and the end of a level leads to the next, with what the player carries. What
 moves is shown on its way in every frame that is drawn, a monster from one
 pose and one stride to the next, so the game is as fluid as the display.
-Still, the sky, liquids, and lights that flicker are not drawn as such yet.
+The status bar of the original is there, with what the game code tells the
+player above it and the counts of a level at its end. Still, the sky,
+liquids, and lights that flicker are not drawn as such yet, and there is no
+menu.
 
 ## What it is made of
 
@@ -35,6 +38,7 @@ extensions/quake/
   quake.cpp                 its code: what it brings to the engine
   game-data.hpp/.cpp        the archives of the game, and its palette
   game-code.hpp/.cpp        the game code run for a level, and the world made to agree with it
+  hud-view.hpp/.cpp         the status bar and what else is shown on top of the world
   level-view.hpp/.cpp       a level shown in the world of the engine
   model-view.hpp/.cpp       the models of the game shown on entities of the engine
   particle-view.hpp/.cpp    the particles of the game, sparks and smoke, drawn as one mesh

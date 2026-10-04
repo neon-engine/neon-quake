@@ -15,6 +15,7 @@
 #include "formats/bsp-file.hpp"
 #include "formats/qc-machine.hpp"
 #include "game-data.hpp"
+#include "hud-view.hpp"
 #include "game/level-collision.hpp"
 #include "game/level-physics.hpp"
 #include "game/level-running.hpp"
@@ -29,6 +30,7 @@
 #include "game/qc-globals.hpp"
 #include "game/qc-host.hpp"
 #include "game/qc-world-builtins.hpp"
+#include "game/status-bar.hpp"
 #include "level-view.hpp"
 #include "model-view.hpp"
 #include "particle-view.hpp"
@@ -127,6 +129,31 @@ namespace quake
 
     std::unique_ptr<Level> _level;
     std::vector<Shown> _shown;
+
+    // What is shown on top of the world: the status bar, and what draws it.
+    StatusBar _status_bar;
+    HudView _hud;
+
+    /// A line the game code printed for the player, and when.
+    struct Message
+    {
+      std::string text;
+      double at = 0.0;
+    };
+
+    // The last lines the game code printed, shown for a few seconds in the
+    // upper left; and what it put in the middle of the screen, and when.
+    std::vector<Message> _messages;
+    std::string _center_text;
+    double _center_at = 0.0;
+
+    // the time of the level at which it was over, while its counts are shown
+    float _completed_time = -1.0f;
+
+    /// For how long a line the game code printed is shown, in seconds, and
+    /// how many are shown at once.
+    static constexpr double message_seconds = 4.0;
+    static constexpr std::size_t most_messages = 4;
 
     // what draws the particles of the level
     ParticleView _particle_view;
@@ -314,6 +341,11 @@ namespace quake
 
     /// Keeps where the eyes are after a step, and where they were before.
     void NoteEyes();
+
+    /// Shows what is on top of the world for the player: the status bar,
+    /// the lines the game code printed, the words in the middle of the
+    /// screen, or the counts of a level that is over.
+    void ShowHud();
 
     /// Puts the camera of the scene where the player looks from, `blend`
     /// of the way between the last two steps, looking where the player
