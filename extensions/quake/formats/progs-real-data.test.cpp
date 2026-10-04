@@ -10,8 +10,8 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include "game/qc-builtin-number.hpp"
 #include "progs-opcode.hpp"
-#include "qc-builtin-names.test.hpp"
 #include "real-data.test.hpp"
 
 // The tests of Progs with the game code of a real game, which a real

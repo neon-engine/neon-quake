@@ -37,6 +37,16 @@ counts in units of its own with z up, and winds its triangles the other way
 than the engine; `formats/quake-space.hpp` is the one place that turns it
 over, a unit being a thirty-second of a metre.
 
+`game/` is what the game code asks of its engine, answered without the engine,
+in a library of its own, `quake-game`, tested like the formats. It has the
+builtins of the original that need no world, `QcCoreBuiltins`: the arithmetic,
+the text, the entities of the machine, the console variables, the models and
+sounds the game code names, the styles of the lights. What they leave behind
+is kept for the host to read, and what the host has to act on, a line of
+text, an entity that went, a change of level, reaches it through the
+interface `QcHost`. The builtins that need a level to collide with, or
+something to draw or to hear, are not there yet.
+
 It is a project with an extension, see
 [projects.md](../neon-engine/docs/projects.md#a-project-with-code-in-c) and
 [extensions.md](../neon-engine/docs/extensions.md) of the engine.

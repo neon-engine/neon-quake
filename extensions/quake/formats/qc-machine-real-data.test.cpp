@@ -21,7 +21,7 @@
 
 #include "bsp-file.hpp"
 #include "entity-text.hpp"
-#include "qc-builtin-names.test.hpp"
+#include "game/qc-builtin-number.hpp"
 #include "real-data.test.hpp"
 
 // The tests of QcMachine with the game code of a real game: the start of a
