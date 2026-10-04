@@ -1,6 +1,7 @@
 // The extension: what it brings to the engine, and where it starts. It reads
 // the data of the game, shows a level of it, and runs the game code for it.
 
+#include <cstdlib>
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -129,6 +130,14 @@ namespace quake
     void Start(neon::extension::World &world) override
     {
       if (!_has_data) { return; }
+
+      // The game greets a player with its menu over a recording. A level
+      // that was asked for by name, and a tour, start at once.
+      if (ReadWantedLevel(world).empty() && std::getenv("QUAKE_TOUR") == nullptr &&
+          _code.StartTitle(world, _data, _level, _models, _sounds, _sprites))
+      {
+        return;
+      }
 
       const std::string map = ChooseLevel(world);
       if (std::string error; !_level.Show(world, _data, map, error))

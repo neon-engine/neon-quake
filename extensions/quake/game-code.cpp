@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <sstream>
 #include <numbers>
 #include <cstdlib>
 #include <set>
@@ -1005,6 +1006,104 @@ namespace quake
     _has_eyes = true;
   }
 
+  void GameCode::AddMenu(std::vector<HudPicture> &pictures)
+  {
+    if (!_menu.IsOpen()) { return; }
+
+    MenuTitleWidths widths;
+    widths.main = _hud.GetWidth(*_world, *_data, "gfx/ttl_main.lmp");
+    widths.single_player = _hud.GetWidth(*_world, *_data, "gfx/ttl_sgl.lmp");
+    widths.multiplayer = _hud.GetWidth(*_world, *_data, "gfx/p_multi.lmp");
+    widths.load = _hud.GetWidth(*_world, *_data, "gfx/p_load.lmp");
+    widths.save = _hud.GetWidth(*_world, *_data, "gfx/p_save.lmp");
+    widths.options = _hud.GetWidth(*_world, *_data, "gfx/p_option.lmp");
+
+    // the clock of the menu is the frames that are drawn: the game's own
+    // stands still
+    _menu_time += static_cast<double>(_frame_time);
+    const std::vector<HudPicture> menu = _menu.Layout(_menu_time, _options, DescribeGame(), widths);
+    pictures.insert(pictures.end(), menu.begin(), menu.end());
+  }
+
+  void GameCode::ShowTitle()
+  {
+    // a recording plays on behind the menu; the next one follows it, and
+    // the first follows the last
+    _demo->Update(*_world, _frame_time);
+    if (_demo->IsOver() && !PlayNextDemo())
+    {
+      // none of them plays: the game starts where a new one starts
+      _wanted_map = "maps/start.bsp";
+      return;
+    }
+
+    std::vector<HudPicture> pictures;
+    AddMenu(pictures);
+    _hud.Show(*_world, *_data, pictures);
+    _hud.ShowTint(*_world, 0.0f, 0.0f, 0.0f, _menu.IsOpen() ? 0.6f : 0.0f);
+  }
+
+  bool GameCode::PlayNextDemo()
+  {
+    if (_demo != nullptr) { _demo->Stop(*_world); }
+
+    // each is tried once, from the one whose turn it is
+    for (std::size_t tried = 0; tried < _demo_names.size(); tried++)
+    {
+      const std::string &name = _demo_names[_next_demo % _demo_names.size()];
+      _next_demo++;
+
+      _demo = std::make_unique<DemoShow>();
+      std::string problem;
+      if (_demo->Start(*_world, *_data, *_view, *_models, *_sounds, *_sprites, name, problem)) { return true; }
+
+      _world->Warn("The recording " + name + " is not played: " + problem);
+    }
+    _demo.reset();
+    return false;
+  }
+
+  bool GameCode::StartTitle(
+    const World &world,
+    const GameData &data,
+    LevelView &view,
+    ModelView &models,
+    SoundView &sounds,
+    SpriteView &sprites)
+  {
+    _world = &world;
+    _data = &data;
+    _view = &view;
+    _models = &models;
+    _sounds = &sounds;
+    _sprites = &sprites;
+    _position_field = world.FindField("Transform", "position");
+    _rotation_field = world.FindField("Transform", "rotation");
+
+    // The recordings the game plays behind its menu, as `quake.rc` names
+    // them: `startdemos demo1 demo2 demo3`.
+    _demo_names.clear();
+    const std::span<const std::uint8_t> script = data.Find("quake.rc");
+    std::istringstream lines(std::string(script.begin(), script.end()));
+    for (std::string line; std::getline(lines, line);)
+    {
+      std::istringstream words(line);
+      std::string word;
+      if (!(words >> word) || word != "startdemos") { continue; }
+
+      while (words >> word) { _demo_names.push_back(word + ".dem"); }
+    }
+    if (_demo_names.empty() || !PlayNextDemo()) { return false; }
+
+    // what the player saved and set in a run before, and the menu
+    ReadSaves();
+    ReadOptions();
+    ApplyOptions();
+    _menu.Open();
+    _was_started = true;
+    return true;
+  }
+
   void GameCode::ShowHud()
   {
     if (_camera == 0) { return; }
@@ -1080,23 +1179,7 @@ namespace quake
       pictures.insert(pictures.end(), words.begin(), words.end());
     }
 
-    // the menu over everything, with the view dimmed behind it
-    if (_menu.IsOpen())
-    {
-      MenuTitleWidths widths;
-      widths.main = _hud.GetWidth(*_world, *_data, "gfx/ttl_main.lmp");
-      widths.single_player = _hud.GetWidth(*_world, *_data, "gfx/ttl_sgl.lmp");
-      widths.multiplayer = _hud.GetWidth(*_world, *_data, "gfx/p_multi.lmp");
-      widths.load = _hud.GetWidth(*_world, *_data, "gfx/p_load.lmp");
-      widths.save = _hud.GetWidth(*_world, *_data, "gfx/p_save.lmp");
-      widths.options = _hud.GetWidth(*_world, *_data, "gfx/p_option.lmp");
-
-      // the clock of the menu is the frames that are drawn: the game's own
-      // stands still
-      _menu_time += static_cast<double>(_frame_time);
-      const std::vector<HudPicture> menu = _menu.Layout(_menu_time, _options, DescribeGame(), widths);
-      pictures.insert(pictures.end(), menu.begin(), menu.end());
-    }
+    AddMenu(pictures);
 
     _hud.Show(*_world, *_data, pictures);
 
@@ -1397,7 +1480,7 @@ namespace quake
 
   void GameCode::ReadInput(const World &world, const float frame_time)
   {
-    if (_level == nullptr) { return; }
+    if (_level == nullptr && _demo == nullptr) { return; }
     _world = &world;
     _frame_time = frame_time;
 
@@ -1417,6 +1500,11 @@ namespace quake
       {
         if (world.WasActionPressed(action)) { Act(_menu.Press(key, _options, DescribeGame())); }
       }
+    }
+    if (_demo != nullptr)
+    {
+      ShowTitle();
+      return;
     }
     if (_menu.IsOpen()) { return; }
 
@@ -1537,6 +1625,10 @@ namespace quake
 
   void GameCode::Stop()
   {
+    // a recording gives way to a game
+    if (_demo != nullptr) { _demo->Stop(*_world); }
+    _demo.reset();
+
     _level.reset();
     _shown.clear();
     // what the bolts showed goes with the level
@@ -1786,12 +1878,12 @@ namespace quake
 
   bool GameCode::IsRunning() const
   {
-    return _level != nullptr;
+    return _level != nullptr || _demo != nullptr;
   }
 
   void GameCode::Advance(const World &world, const float dt)
   {
-    if (_level == nullptr) { return; }
+    if (_level == nullptr && _demo == nullptr) { return; }
     _world = &world;
     if (dt > 0.0f) { _step = dt; }
 
@@ -1802,8 +1894,9 @@ namespace quake
       return;
     }
 
-    // while the menu is open the game stands still
-    if (_menu.IsOpen()) { return; }
+    // while the menu is open the game stands still, and a recording is
+    // played by the frames that are drawn
+    if (_menu.IsOpen() || _level == nullptr) { return; }
 
     // The player is steered by what is pressed, and then moved with
     // everything else of the level: the game code and the collision of the

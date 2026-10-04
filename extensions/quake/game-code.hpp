@@ -38,6 +38,7 @@
 #include "game/view-tint.hpp"
 #include "level-view.hpp"
 #include "model-view.hpp"
+#include "demo-show.hpp"
 #include "light-view.hpp"
 #include "particle-view.hpp"
 #include "sound-view.hpp"
@@ -186,6 +187,17 @@ namespace quake
     /// are, and how bright the game is shown.
     void ApplyOptions();
 
+    /// Adds the pictures of the menu to a list, while it is open.
+    void AddMenu(std::vector<HudPicture> &pictures);
+
+    /// Plays the recording behind the menu on by a frame, and shows the
+    /// menu over it.
+    void ShowTitle();
+
+    /// Ends the recording that plays and starts the one whose turn it is.
+    /// Returns false when none of them can be played.
+    bool PlayNextDemo();
+
     /// Lights what the game code has flash and glow in this step: the shot
     /// of a gun, a rocket, who carries a strong or a weak light.
     void ShowLights();
@@ -275,6 +287,12 @@ namespace quake
 
     // what draws the particles of the level
     ParticleView _particle_view;
+
+    // The recording that plays behind the menu until a game is started,
+    // the names of those the data has, and whose turn it is next.
+    std::unique_ptr<DemoShow> _demo;
+    std::vector<std::string> _demo_names;
+    std::size_t _next_demo = 0;
 
     // how much the camera sees from top to bottom as it was last told
     float _shown_field = 0.0f;
@@ -558,6 +576,18 @@ namespace quake
     void TextPrinted(const ServerMessageTarget &target, std::string_view text) override;
 
     void ServerCommand(std::string_view text) override;
+
+    /// Greets a player as the original does: with the menu, over the
+    /// recordings the data names, one after the other, until a game is
+    /// started from the menu. Returns false when the data has no recording
+    /// that can be played; a level is then started in its place.
+    bool StartTitle(
+      const neon::extension::World &world,
+      const GameData &data,
+      LevelView &view,
+      ModelView &models,
+      SoundView &sounds,
+      SpriteView &sprites);
 
     /// Starts the game code for a level the level view shows already: reads
     /// `progs.dat`, hands it the entities of the level, and lets the one

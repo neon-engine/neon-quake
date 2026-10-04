@@ -65,6 +65,7 @@ neon_add_project(quake
         extensions/quake/quake.cpp
         extensions/quake/game-code.cpp
         extensions/quake/game-code.hpp
+        extensions/quake/demo-show.cpp
         extensions/quake/game-data.cpp
         extensions/quake/hud-view.cpp
         extensions/quake/hud-view.hpp
