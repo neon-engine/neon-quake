@@ -1,5 +1,5 @@
 // The extension: what it brings to the engine, and where it starts. It reads
-// the data of the game and shows a level of it.
+// the data of the game, shows a level of it, and runs the game code for it.
 
 #include <algorithm>
 #include <cstddef>
@@ -10,23 +10,43 @@
 
 #include <neon/extension/neon-extension.hpp>
 
+#include "game-code.hpp"
 #include "game-data.hpp"
 #include "level-view.hpp"
+#include "model-view.hpp"
 
 namespace quake
 {
-  /// Puts the player where a level says one starts once the scene has one,
-  /// which is after the level was shown.
-  class PlayerPlacing final : public neon::extension::System
+  /// Lets time pass for the game: a step of the game code for every step of
+  /// the world, and the models that play by themselves in every frame.
+  /// Without game code it puts the player where the level says one starts,
+  /// once the scene has one, which is after the level was shown.
+  class GameRunning final : public neon::extension::System
   {
     LevelView *_level;
+    ModelView *_models;
+    GameCode *_code;
+    double _time = 0.0;
 
   public:
-    explicit PlayerPlacing(LevelView *level) { _level = level; }
+    GameRunning(LevelView *level, ModelView *models, GameCode *code)
+    {
+      _level = level;
+      _models = models;
+      _code = code;
+    }
 
     void Update(neon::extension::World &world, const double delta_time) override
     {
-      _level->PlacePlayer(world);
+      if (!_code->IsRunning()) { _level->PlacePlayer(world); }
+
+      _time += delta_time;
+      _models->Update(world, _time);
+    }
+
+    void FixedUpdate(neon::extension::World &world, const double fixed_delta_time) override
+    {
+      _code->Advance(world, static_cast<float>(fixed_delta_time));
     }
   };
 
@@ -34,6 +54,8 @@ namespace quake
   {
     GameData _data;
     LevelView _level;
+    ModelView _models;
+    GameCode _code;
     bool _has_data = false;
 
     /// A file the player may write to choose the level that is shown: its
@@ -90,7 +112,7 @@ namespace quake
       _has_data = _data.Load(world, error);
       if (!_has_data) { world.Warn("The data of the game is not there: " + error + ". See README.md"); }
 
-      AddSystem<PlayerPlacing>("PlayerPlacing", &_level);
+      AddSystem<GameRunning>("GameRunning", &_level, &_models, &_code);
       return true;
     }
 
@@ -99,7 +121,17 @@ namespace quake
       if (!_has_data) { return; }
 
       const std::string map = ChooseLevel(world);
-      if (std::string error; !_level.Show(world, _data, map, error)) { world.Error(error); }
+      if (std::string error; !_level.Show(world, _data, map, error))
+      {
+        world.Error(error);
+        return;
+      }
+
+      // a level without game code is still one to walk
+      if (std::string error; !_code.Start(world, _data, _level, _models, map, error))
+      {
+        world.Warn("The level is shown without the game: " + error);
+      }
     }
   };
 } // quake

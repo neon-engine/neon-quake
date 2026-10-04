@@ -140,6 +140,12 @@ namespace quake
     return true;
   }
 
+  std::uint32_t ModelView::GetFlags(const Entity entity) const
+  {
+    const auto known = _shown.find(entity);
+    return known != _shown.end() ? known->second.model->file.GetHeader().flags : 0;
+  }
+
   void ModelView::Forget(const Entity entity)
   {
     _shown.erase(entity);

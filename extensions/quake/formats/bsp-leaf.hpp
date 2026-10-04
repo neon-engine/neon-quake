@@ -16,6 +16,7 @@ namespace quake
 
     /// Where the list of leaves seen from here starts in the visibility, or
     /// -1 when everything is seen.
+    /// It means nothing in a level that has no visibility at all.
     std::int32_t visibility_offset = -1;
 
     std::array<std::int16_t, 3> mins{};

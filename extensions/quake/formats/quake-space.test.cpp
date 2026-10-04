@@ -59,4 +59,13 @@ namespace
     EXPECT_FLOAT_EQ(QuakeSpace::ToEngineYaw(0.0f), -90.0f);
     EXPECT_FLOAT_EQ(QuakeSpace::ToEngineYaw(180.0f), 90.0f);
   }
+
+  TEST(QuakeSpaceTest, TurnsAPlaceOfTheEngineBackIntoTheOneOfTheGame)
+  {
+    const BspVector there = QuakeSpace::ToEnginePosition({96.0f, -48.0f, 24.0f});
+    const BspVector back = QuakeSpace::ToGamePosition(there);
+    EXPECT_FLOAT_EQ(back.x, 96.0f);
+    EXPECT_FLOAT_EQ(back.y, -48.0f);
+    EXPECT_FLOAT_EQ(back.z, 24.0f);
+  }
 }

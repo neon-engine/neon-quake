@@ -30,6 +30,13 @@ namespace quake
       return {place.x * metres_per_unit, place.z * metres_per_unit, -place.y * metres_per_unit};
     }
 
+    /// A place of the engine as the game has it, in its units: what
+    /// ToEnginePosition() does, the other way around.
+    [[nodiscard]] static constexpr BspVector ToGamePosition(const BspVector &place)
+    {
+      return {place.x / metres_per_unit, -place.z / metres_per_unit, place.y / metres_per_unit};
+    }
+
     /// A direction, such as a normal: turned as a place is, and as long as
     /// it was.
     [[nodiscard]] static constexpr BspVector ToEngineDirection(const BspVector &direction)

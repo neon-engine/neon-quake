@@ -144,17 +144,26 @@ namespace quake
     const World &world,
     const GameData &data,
     const BspFile &level,
+    const std::string &item,
     const std::int32_t texture)
   {
-    if (const auto known = _pictures.find(texture); known != _pictures.end()) { return known->second; }
+    const bool is_item = !item.empty();
+    if (is_item)
+    {
+      if (const auto known = _item_pictures.find({item, texture}); known != _item_pictures.end()) { return known->second; }
+    } else if (const auto known = _pictures.find(texture); known != _pictures.end()) { return known->second; }
 
     std::string path;
     if (texture >= 0 && static_cast<std::size_t>(texture) < level.textures.size() && level.textures[texture].has_value())
     {
       const MipTexture &source = *level.textures[texture];
       const std::vector<std::uint8_t> pixels = data.GetPalette().ToRgba(source.pixels[0], source.HasHoles());
-      path = world.SetImage("textures/" + source.name, source.width, source.height, pixels);
+      // an item carries textures of its own, which may be named as those
+      // of the level are
+      const std::string name = is_item ? item + "/textures/" + source.name : "textures/" + source.name;
+      path = world.SetImage(name, source.width, source.height, pixels);
     }
+    if (is_item) { return _item_pictures.emplace(std::pair(item, texture), std::move(path)).first->second; }
     return _pictures.emplace(texture, std::move(path)).first->second;
   }
 
@@ -162,6 +171,7 @@ namespace quake
     const World &world,
     const GameData &data,
     const BspFile &level,
+    const std::string &item,
     const std::size_t model,
     const Entity parent,
     std::size_t &triangles,
@@ -169,6 +179,9 @@ namespace quake
   {
     BspMesh mesh;
     if (!mesh.Build(level, model, error)) { return false; }
+
+    const bool is_item = !item.empty();
+    const std::string &file_name = is_item ? item : _map;
 
     const NeonField shader_field = world.FindField("Renderable", "shader");
     const NeonField textures_field = world.FindField("Renderable", "textures");
@@ -185,7 +198,7 @@ namespace quake
     {
       if (std::string problem; !atlas.Build(mesh, problem))
       {
-        world.Warn("The light of model " + std::to_string(model) + " of " + _map + " cannot be packed: " + problem);
+        world.Warn("The light of model " + std::to_string(model) + " of " + file_name + " cannot be packed: " + problem);
       } else
       {
         // A face the level gave no light is dark in a level that has light,
@@ -208,14 +221,19 @@ namespace quake
           }
         }
 
-        for (std::size_t page = 0; page < atlas.pages.size(); page++)
+        // an item is shown many times and its light is one picture for all
+        const auto known_light = is_item ? _item_lightmaps.find(item) : _item_lightmaps.end();
+        if (known_light != _item_lightmaps.end()) { lightmaps = known_light->second; }
+
+        for (std::size_t page = 0; lightmaps.size() < atlas.pages.size(); page++)
         {
           lightmaps.push_back(world.SetImage(
-            "lightmaps/" + _map + "/" + std::to_string(model) + "/" + std::to_string(page),
+            "lightmaps/" + file_name + "/" + std::to_string(model) + "/" + std::to_string(page),
             atlas.pages[page].width,
             atlas.pages[page].height,
             atlas.pages[page].pixels));
         }
+        if (is_item) { _item_lightmaps[item] = lightmaps; }
       }
     }
     const bool is_lit = !lightmaps.empty();
@@ -282,7 +300,7 @@ namespace quake
         world.AddComponent(entity, "Renderable");
         world.SetText(entity, shader_field, "assets://shaders/unlit");
 
-        if (const std::string &picture = FindPicture(world, data, level, group.texture); !picture.empty())
+        if (const std::string &picture = FindPicture(world, data, level, item, group.texture); !picture.empty())
         {
           world.SetTexts(entity, textures_field, {picture});
         }
@@ -291,11 +309,14 @@ namespace quake
         triangles += indices.size() / 3;
 
         // What is seen is what is walked on and into: the faces stand still
-        // and collide as the mesh they are. A liquid is waded through.
-        if (!group.is_liquid)
+        // and collide as the mesh they are. A liquid is waded through, and
+        // an item walked through.
+        if (!group.is_liquid && !is_item)
         {
           world.AddComponent(entity, "RigidBody");
-          world.SetText(entity, body_kind_field, "static");
+          // the level itself never moves; a door or a lift is moved by the
+          // game, and pushes what is in its way
+          world.SetText(entity, body_kind_field, model == 0 ? "static" : "kinematic");
           world.AddComponent(entity, "Collider");
           world.SetText(entity, collider_shape_field, "mesh");
         }
@@ -310,6 +331,43 @@ namespace quake
     }
 
     return true;
+  }
+
+  Entity LevelView::FindPart(const std::size_t model) const
+  {
+    const auto found = _parts.find(model);
+    return found != _parts.end() ? found->second : 0;
+  }
+
+  bool LevelView::ShowItem(const World &world, const GameData &data, const std::string &name, const Entity parent)
+  {
+    auto known = _items.find(name);
+    if (known == _items.end())
+    {
+      known = _items.emplace(name, nullptr).first;
+
+      const std::span<const std::uint8_t> bytes = data.Find(name);
+      auto file = std::make_unique<BspFile>();
+      if (bytes.empty())
+      {
+        world.Warn("The data of the game holds no " + name);
+      } else if (std::string problem; !file->Read(bytes, problem))
+      {
+        world.Warn(name + " cannot be read: " + problem);
+      } else
+      {
+        known->second = std::move(file);
+      }
+    }
+    if (known->second == nullptr) { return false; }
+
+    std::size_t triangles = 0;
+    if (std::string problem; !ShowModel(world, data, *known->second, name, 0, parent, triangles, problem))
+    {
+      world.Warn("No mesh can be made of " + name + ": " + problem);
+      return false;
+    }
+    return triangles > 0;
   }
 
   bool LevelView::Show(const World &world, const GameData &data, const std::string &map, std::string &error)
@@ -332,6 +390,7 @@ namespace quake
 
     // the pictures of a level that was shown before are not those of this one
     _pictures.clear();
+    _parts.clear();
 
     const Entity root = world.CreateEntity("level");
     world.AddComponent(root, "Transform");
@@ -339,7 +398,7 @@ namespace quake
     std::size_t triangles = 0;
 
     // the first model of a level is the level itself
-    if (std::string problem; !ShowModel(world, data, level, 0, root, triangles, problem))
+    if (std::string problem; !ShowModel(world, data, level, "", 0, root, triangles, problem))
     {
       error = "no mesh can be made of " + map + ": " + problem;
       return false;
@@ -384,6 +443,7 @@ namespace quake
 
       const Entity part = world.CreateEntity(name, root);
       world.AddComponent(part, "Transform");
+      _parts[model] = part;
       if (BspVector origin; read_vector(entity, "origin", origin))
       {
         const BspVector place = QuakeSpace::ToEnginePosition(origin);
@@ -391,7 +451,7 @@ namespace quake
       }
 
       const std::size_t triangles_before = triangles;
-      if (std::string problem; !ShowModel(world, data, level, model, part, triangles, problem))
+      if (std::string problem; !ShowModel(world, data, level, "", model, part, triangles, problem))
       {
         world.Warn("No mesh can be made of " + name + " of " + map + ": " + problem);
         continue;

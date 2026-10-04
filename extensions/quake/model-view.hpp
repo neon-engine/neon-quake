@@ -95,6 +95,10 @@ namespace quake
       std::int32_t skin,
       float light = 1.0f);
 
+    /// The effects the model an entity shows was made with, a bit for each,
+    /// see `MdlHeader::flags`. Zero for an entity that shows none.
+    [[nodiscard]] std::uint32_t GetFlags(neon::extension::Entity entity) const;
+
     /// No longer keeps track of an entity, which is gone or shows no model
     /// of this kind any more. Its mesh is whoever owns the entity's to
     /// remove.

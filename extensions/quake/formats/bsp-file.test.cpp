@@ -583,6 +583,15 @@ namespace
     EXPECT_EQ(ReasonOfRefusal(sky), "");
   }
 
+  TEST(BspFileTest, ReadsALevelWithoutVisibilityWhoseLeavesNameItAllTheSame)
+  {
+    // as the small levels that are items do
+    Level level = MakeQuad();
+    level.Lump(BspLumpKind::Visibility).clear();
+    SetI32(level.Lump(BspLumpKind::Leaves), 28 + 4, 0);
+    EXPECT_EQ(ReasonOfRefusal(level), "");
+  }
+
   TEST(BspFileTest, RefusesALeafThatNamesWhatIsNotThere)
   {
     Level faces = MakeQuad();

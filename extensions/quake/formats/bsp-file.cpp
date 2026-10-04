@@ -339,7 +339,11 @@ namespace quake
           return refuse(error, names_range_outside(
             "leaf", i, "faces of leaves", leaf.first_leaf_face, leaf.leaf_face_count, file.leaf_faces.size()));
         }
-        if (leaf.visibility_offset != -1 && !is_inside(leaf.visibility_offset, file.visibility.size()))
+        // A level without visibility, as the small ones that are items, has
+        // leaves that name its first byte all the same. There is nothing to
+        // look up then, and whoever reads the visibility sees that it is empty.
+        if (leaf.visibility_offset != -1 && !file.visibility.empty() &&
+            !is_inside(leaf.visibility_offset, file.visibility.size()))
         {
           return refuse(error,
             names_outside("leaf", i, "byte of visibility", leaf.visibility_offset, file.visibility.size()));

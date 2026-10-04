@@ -5,13 +5,16 @@ loaded, and its game code interpreted, by a native extension. It is the
 proof that the engine can be extended from outside, and that a game can be
 made on it without touching the engine. The engine knows nothing of Quake.
 
-**Where this stands.** The extension reads the archives of the game and shows
-a level, chosen by a line in a text file: its walls, floors, and ceilings
-with their textures, its doors, lifts, and buttons at rest, all lit by the
-light the level carries. A player stands where the level says one starts and
-walks it: the floor holds, and walls and closed doors stop. Nothing moves or
-opens, and the sky, liquids, and lights that flicker are not drawn as such
-yet.
+**Where this stands.** The extension reads the archives of the game, shows a
+level, chosen by a line in a text file, and runs the game code of the game
+for it. The level has its walls, floors, and ceilings with their textures,
+lit by the light it carries. The game code makes its entities: monsters,
+items, and torches stand where the level puts them, with their models and
+the frames the game code gives them. A player stands where the game code
+puts one and walks the level. Doors open when they are walked up to, lifts
+and buttons move, teleporters take the player away, and items are picked up.
+Monsters do not see the player or walk yet, nothing is shot or heard, and
+the sky, liquids, and lights that flicker are not drawn as such yet.
 
 ## What it is made of
 
@@ -21,6 +24,7 @@ extensions/quake/
   extension.yml             the recipe of the extension
   quake.cpp                 its code: what it brings to the engine
   game-data.hpp/.cpp        the archives of the game, and its palette
+  game-code.hpp/.cpp        the game code run for a level, and the world made to agree with it
   level-view.hpp/.cpp       a level shown in the world of the engine
   model-view.hpp/.cpp       the models of the game shown on entities of the engine
   formats/                  the formats of the game's data, read from bytes

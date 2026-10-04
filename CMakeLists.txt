@@ -63,6 +63,8 @@ set_target_properties(quake-game PROPERTIES POSITION_INDEPENDENT_CODE ON)
 neon_add_project(quake
         SOURCES
         extensions/quake/quake.cpp
+        extensions/quake/game-code.cpp
+        extensions/quake/game-code.hpp
         extensions/quake/game-data.cpp
         extensions/quake/game-data.hpp
         extensions/quake/level-view.cpp

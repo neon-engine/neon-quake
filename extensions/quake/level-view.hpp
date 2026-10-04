@@ -4,7 +4,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include <neon/extension/neon-extension.hpp>
 
@@ -45,6 +48,23 @@ namespace quake
     // for a texture that has no picture.
     std::map<std::int32_t, std::string> _pictures;
 
+    // The same for the pictures of the small levels that are items, by the
+    // name of the file and the number of the texture in it.
+    std::map<std::pair<std::string, std::int32_t>, std::string> _item_pictures;
+
+    // The paths of the pictures of the light of such an item, by the name
+    // of its file.
+    std::map<std::string, std::vector<std::string>> _item_lightmaps;
+
+    // The small levels that are items, such as `maps/b_bh25.bsp`, as they
+    // were read. One that cannot be read is kept as nothing, so that it is
+    // read, and said, once.
+    std::map<std::string, std::unique_ptr<BspFile>> _items;
+
+    // The entity each model of the level but the first is shown under, by
+    // the number of the model.
+    std::map<std::size_t, neon::extension::Entity> _parts;
+
     // the name of the level that is shown, which the pictures of its light
     // are named after
     std::string _map;
@@ -52,13 +72,16 @@ namespace quake
     /// Finds where a player starts among the entities of a level.
     void FindStart(const neon::extension::World &world, const EntityText &text, const std::string &map);
 
-    /// The path of the picture of a texture of the level, which is made
+    /// The path of the picture of a texture of a level, which is made
     /// known to the renderer the first time it is asked for. Empty when the
     /// level does not carry the texture or the renderer does not take it.
+    /// `item` is empty for the level that is shown, and the name of the
+    /// file for a small level that is an item.
     const std::string &FindPicture(
       const neon::extension::World &world,
       const GameData &data,
       const BspFile &level,
+      const std::string &item,
       std::int32_t texture);
 
     /// Shows one model of a level: an entity under `parent` for each of its
@@ -66,10 +89,15 @@ namespace quake
     /// what is there to collide with and not to be seen. Adds what it showed
     /// to `triangles`. Returns false when no mesh can be made of the model,
     /// and says why in `error`.
+    ///
+    /// `item` is empty for the level that is shown. For a small level that
+    /// is an item it is the name of its file, and what is shown stops
+    /// nothing: an item is walked through and picked up.
     bool ShowModel(
       const neon::extension::World &world,
       const GameData &data,
       const BspFile &level,
+      const std::string &item,
       std::size_t model,
       neon::extension::Entity parent,
       std::size_t &triangles,
@@ -84,6 +112,22 @@ namespace quake
       const GameData &data,
       const std::string &map,
       std::string &error);
+
+    /// The entity a model of the level that is shown stands under, by its
+    /// number, which a door, a lift, or a button is moved by. Nothing for
+    /// the level itself, for a trigger, which is not shown, and for a number
+    /// the level has no model of.
+    [[nodiscard]] neon::extension::Entity FindPart(std::size_t model) const;
+
+    /// Shows a small level that is an item, such as the box of health
+    /// `maps/b_bh25.bsp`, under an entity: with its textures and its light,
+    /// and without stopping anything. Returns false when the data has no
+    /// such file or no mesh can be made of it.
+    bool ShowItem(
+      const neon::extension::World &world,
+      const GameData &data,
+      const std::string &name,
+      neon::extension::Entity parent);
 
     /// Puts the player of the scene, the entity `player`, or else its
     /// `camera`, where a player starts, looking the way the level says. The
