@@ -25,14 +25,16 @@ moves is shown on its way in every frame that is drawn, a monster from one
 pose and one stride to the next, so the game is as fluid as the display.
 The status bar of the original is there, with what the game code tells the
 player above it and the counts of a level at its end. Textures are shown pixel by pixel, liquids swim and are seen through as far
-as a level says, the sky drifts, and a level has its fog. Still, lights that
-flicker are steady, and there is no menu.
+as a level says, the sky drifts, and a level has its fog. The game greets a player with the menu of the original, which escape opens
+again: a new game, the options, the manual, leaving. Still, lights that
+flicker are steady, and a game cannot be saved.
 
 ## What it is made of
 
 ```
 assets/project.yml          the project: its name, and the scene it starts with
 assets/input/               the input map of the game: what the player does, and the keys for it
+assets/settings.yml         the settings of the game: its window, and no menu of the engine
 extensions/quake/
   extension.yml             the recipe of the extension
   quake.cpp                 its code: what it brings to the engine

@@ -35,9 +35,8 @@ namespace
     std::vector<HudPicture> pictures;
     HudText::AddLine(pictures, "A \xc1", 0, 0, HudAnchor::Bottom, true);
 
-    // the space becomes the blank of the bronze set, which is drawn
-    EXPECT_THAT(pictures, ElementsAre(
-      MakeLetter('A' + 128, 0, 0), MakeLetter(' ' + 128, 8, 0), MakeLetter(0xc1, 16, 0)));
+    // a space is no letter in bronze either: it only takes its room
+    EXPECT_THAT(pictures, ElementsAre(MakeLetter('A' + 128, 0, 0), MakeLetter(0xc1, 16, 0)));
   }
 
   TEST(HudTextTest, KeepsTheBytesOver127AsTheLettersTheyAre)

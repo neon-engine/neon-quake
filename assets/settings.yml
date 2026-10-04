@@ -1,0 +1,12 @@
+# The settings of the game, on top of those the engine starts with. What the
+# file holds is described in docs/settings.md of the engine.
+#
+# No menu of the engine is named: the game has its own, the one of the
+# original, which escape opens.
+
+version: 1
+
+window:
+  width: 1920
+  height: 1080
+  mode: borderless

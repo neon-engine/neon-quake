@@ -29,10 +29,12 @@ namespace quake
     std::int32_t at = x;
     for (const char letter : text)
     {
+      // a space is no letter, in white or in bronze
+      const bool is_space = letter == ' ';
       std::int32_t character = static_cast<unsigned char>(letter);
       if (in_bronze && character < bronze) { character += bronze; }
 
-      if (character != ' ')
+      if (!is_space)
       {
         pictures.push_back({
           .kind = HudPictureKind::Character,

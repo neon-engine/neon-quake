@@ -22,6 +22,7 @@
 #include "game/level-stepping.hpp"
 #include "game/level-axes.hpp"
 #include "game/level-touching.hpp"
+#include "game/menu.hpp"
 #include "game/particle-system.hpp"
 #include "game/player-command.hpp"
 #include "game/player-movement.hpp"
@@ -136,6 +137,24 @@ namespace quake
     // What is shown on top of the world: the status bar, and what draws it.
     StatusBar _status_bar;
     HudView _hud;
+
+    // The menu of the game, what it sets, and whether the mouse looks the
+    // other way up and down.
+    Menu _menu;
+    MenuOptions _options{.always_run = true};
+    double _menu_time = 0.0;
+
+    // whether the game was started before: the first time, its menu is open,
+    // as the original greets a player with it
+    bool _was_started = false;
+
+    /// Does what the menu asks for: plays its sounds, takes its settings,
+    /// starts a game, leaves.
+    void Act(const std::vector<MenuAction> &actions);
+
+    /// What the menu is told of the game: whether one runs, and what is
+    /// saved.
+    [[nodiscard]] MenuGame DescribeGame();
 
     // the colour laid over what the player sees: a hit, a pickup, water
     ViewTint _tint;

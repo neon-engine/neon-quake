@@ -882,7 +882,8 @@ namespace quake
     // while `run` is held. The game holds the speed down to what a player
     // may have.
     const neon::extension::Vector2 move = _world->ActionAxis2("move");
-    const float pace = _world->IsActionDown("run") ? 0.5f : 1.0f;
+    // with "always run" off in the menu it is the other way around
+    const float pace = _world->IsActionDown("run") != _options.always_run ? 1.0f : 0.5f;
     const float up = (_world->IsActionDown("swim-up") ? 1.0f : 0.0f) - (_world->IsActionDown("swim-down") ? 1.0f : 0.0f);
 
     PlayerCommand command;
@@ -976,6 +977,24 @@ namespace quake
       pictures.insert(pictures.end(), words.begin(), words.end());
     }
 
+    // the menu over everything, with the view dimmed behind it
+    if (_menu.IsOpen())
+    {
+      MenuTitleWidths widths;
+      widths.main = _hud.GetWidth(*_world, *_data, "gfx/ttl_main.lmp");
+      widths.single_player = _hud.GetWidth(*_world, *_data, "gfx/ttl_sgl.lmp");
+      widths.multiplayer = _hud.GetWidth(*_world, *_data, "gfx/p_multi.lmp");
+      widths.load = _hud.GetWidth(*_world, *_data, "gfx/p_load.lmp");
+      widths.save = _hud.GetWidth(*_world, *_data, "gfx/p_save.lmp");
+      widths.options = _hud.GetWidth(*_world, *_data, "gfx/p_option.lmp");
+
+      // the clock of the menu is the frames that are drawn: the game's own
+      // stands still
+      _menu_time += static_cast<double>(_frame_time);
+      const std::vector<HudPicture> menu = _menu.Layout(_menu_time, _options, DescribeGame(), widths);
+      pictures.insert(pictures.end(), menu.begin(), menu.end());
+    }
+
     _hud.Show(*_world, *_data, _camera, pictures);
 
     // The colour over the view: what the eyes are in, what the player
@@ -986,6 +1005,11 @@ namespace quake
     _tint.SetContents(_level->collision.GetPointContents({eyes[0], eyes[1], eyes[2]}));
     _tint.SetItems(stats.items);
     _tint.Advance(_frame_time);
+    if (_menu.IsOpen())
+    {
+      _hud.ShowTint(*_world, _camera, {0.0f, 0.0f, 0.0f, 0.6f});
+      return;
+    }
     const ViewTint::Colour tint = _tint.Mix();
     _hud.ShowTint(*_world, _camera, {
       std::pow(tint.red / 255.0f, 2.2f), std::pow(tint.green / 255.0f, 2.2f), std::pow(tint.blue / 255.0f, 2.2f),
@@ -1074,10 +1098,72 @@ namespace quake
     _sprites->Face(*_world, -(_view_pitch + punch[0]), QuakeSpace::ToEngineYaw(_view_yaw + punch[1]));
   }
 
+  MenuGame GameCode::DescribeGame()
+  {
+    MenuGame game;
+    game.is_running = _level != nullptr;
+    game.is_in_intermission = _is_over;
+    return game;
+  }
+
+  void GameCode::Act(const std::vector<MenuAction> &actions)
+  {
+    for (const MenuAction &action : actions)
+    {
+      switch (action.kind)
+      {
+        case MenuActionKind::PlaySound:
+          // heard the same everywhere: it is of the menu, not of the level
+          _sounds->Play(*_world, *_data, 0, 0, std::string(action.name), {0.0f, 0.0f, 0.0f}, 1.0f, 0.0f);
+          break;
+        case MenuActionKind::SetOption:
+          _options.Set(action.name, action.value);
+          break;
+        case MenuActionKind::NewGame:
+          // the game starts where the original starts one, as a new player
+          _wanted_map = "maps/start.bsp";
+          _wanted_parms.clear();
+          _server_flags = 0.0f;
+          break;
+        case MenuActionKind::Quit:
+          // The engine gives an extension no way to end the application, so
+          // the process is ended as it is. Nothing of the game is unsaved.
+          _world->Info("The game is left from its menu");
+          std::_Exit(0);
+        case MenuActionKind::LoadGame:
+        case MenuActionKind::SaveGame:
+          _world->Info("Saved games are not there yet");
+          break;
+        default:
+          break;
+      }
+    }
+  }
+
   void GameCode::ReadInput(const World &world, const float frame_time)
   {
     if (_level == nullptr) { return; }
+    _world = &world;
     _frame_time = frame_time;
+
+    // The menu. `pause` opens it and goes back in it; while it is open the
+    // game stands still and the keys are the menu's.
+    if (world.WasActionPressed("pause"))
+    {
+      Act(_menu.IsOpen() ? _menu.Press(MenuKey::Back, _options, DescribeGame()) : _menu.Open());
+    } else if (_menu.IsOpen())
+    {
+      for (const auto &[action, key] : {
+             std::pair("menu-up", MenuKey::Up), std::pair("menu-down", MenuKey::Down),
+             std::pair("menu-left", MenuKey::Left), std::pair("menu-right", MenuKey::Right),
+             std::pair("menu-select", MenuKey::Select), std::pair("menu-back", MenuKey::Back),
+             std::pair("menu-yes", MenuKey::Yes), std::pair("menu-no", MenuKey::No),
+           })
+      {
+        if (world.WasActionPressed(action)) { Act(_menu.Press(key, _options, DescribeGame())); }
+      }
+    }
+    if (_menu.IsOpen()) { return; }
 
     _sprites->Update(world, *_data, _level->running.GetTime());
     _level->particles.Advance(frame_time, _level->builtins.GetVariables().GetFloat("sv_gravity"));
@@ -1088,9 +1174,13 @@ namespace quake
     if (!IsPlayerHeld())
     {
       const neon::extension::Vector2 look = world.ActionAxis2("look");
-      _view_yaw = wrap_angle(_view_yaw - look.x * look_speed);
+      // as fast as the menu says, 3 being as it is, and the other way up
+      // and down for who wants it
+      const float speed = look_speed * _options.mouse_speed / 3.0f;
+      const float up = _options.invert_mouse ? -1.0f : 1.0f;
+      _view_yaw = wrap_angle(_view_yaw - look.x * speed);
       // `look` counts up as more, and the game counts down as more
-      _view_pitch = std::clamp(_view_pitch - look.y * look_speed, most_pitch_up, most_pitch_down);
+      _view_pitch = std::clamp(_view_pitch - look.y * speed * up, most_pitch_up, most_pitch_down);
     }
 
     for (int weapon = 1; weapon <= 8; weapon++)
@@ -1173,6 +1263,11 @@ namespace quake
     Stop();
     _map = map;
     _tours = std::getenv("QUAKE_TOUR") != nullptr;
+
+    // The game greets a player with its menu, over the room it starts in. A
+    // tour has nobody to greet.
+    if (!_was_started && !_tours) { _menu.Open(); }
+    _was_started = true;
     _start_parms.clear();
     _server_flags = 0.0f;
     return Run(error);
@@ -1325,6 +1420,17 @@ namespace quake
     for (std::int32_t entity = 1; entity < _level->machine.GetEntityCount(); entity++) { Show(entity); }
     SayFailures();
 
+    // where the player looks from is known from the start, whether or not
+    // a step follows: the menu may be open
+    if (_level->fields.fixangle.Get(_level->machine, player_entity) != 0.0f)
+    {
+      const Vector angles = _level->fields.angles.Get(_level->machine, player_entity);
+      _view_pitch = angles[0];
+      _view_yaw = angles[1];
+      _level->fields.fixangle.Set(_level->machine, player_entity, 0.0f);
+    }
+    NoteEyes();
+
     world.Info("The game code runs " + name + ": " + std::to_string(report.spawned) + " entities made, " +
       std::to_string(report.left_out) + " left out, " + std::to_string(report.without_function) + " unknown to it, " +
       std::to_string(static_cast<int>(_level->globals.total_monsters.Get(_level->machine))) + " monsters");
@@ -1359,6 +1465,16 @@ namespace quake
     if (_level == nullptr) { return; }
     _world = &world;
     if (dt > 0.0f) { _step = dt; }
+
+    // a game the menu asked for is started before anything else
+    if (!_wanted_map.empty())
+    {
+      GoToWantedLevel();
+      return;
+    }
+
+    // while the menu is open the game stands still
+    if (_menu.IsOpen()) { return; }
 
     // The player is steered by what is pressed, and then moved with
     // everything else of the level: the game code and the collision of the
