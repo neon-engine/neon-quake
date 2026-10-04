@@ -49,6 +49,18 @@ text, an entity that went, a change of level, reaches it through the
 interface `QcHost`. The builtins that need a level to collide with, or
 something to draw or to hear, are not there yet.
 
+It also has what the engine of the original did around the game code. A
+level starts with `LevelSpawning`: each entity of the level's text gets an
+entity of the machine, its keys written into the fields of the same names,
+and is handed to the function its `classname` names, unless the skill leaves
+it out. Time passes with `LevelRunning`, a step at a time: the game code
+starts the frame, every entity thinks when its time has come, and what
+pushes, a door or a lift, moves by a clock of its own. What takes the walls
+of a level, falling and walking and what a door runs into, is asked of a
+`LevelMover`, which a host with collisions brings. `QcGlobals` and `QcFields`
+are the globals and fields the two work with, found by name once, for a host
+to read and write as well: `fields.origin.Get(machine, entity)`.
+
 It is a project with an extension, see
 [projects.md](../neon-engine/docs/projects.md#a-project-with-code-in-c) and
 [extensions.md](../neon-engine/docs/extensions.md) of the engine.
