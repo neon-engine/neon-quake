@@ -24,8 +24,9 @@ and the end of a level leads to the next, with what the player carries. What
 moves is shown on its way in every frame that is drawn, a monster from one
 pose and one stride to the next, so the game is as fluid as the display.
 The status bar of the original is there, with what the game code tells the
-player above it and the counts of a level at its end. Textures are shown pixel by pixel, liquids swim, and the sky drifts. Still,
-lights that flicker are steady, there is no fog, and there is no menu.
+player above it and the counts of a level at its end. Textures are shown pixel by pixel, liquids swim and are seen through as far
+as a level says, the sky drifts, and a level has its fog. Still, lights that
+flicker are steady, and there is no menu.
 
 ## What it is made of
 

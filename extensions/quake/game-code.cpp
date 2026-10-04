@@ -927,6 +927,12 @@ namespace quake
       _clock, _world->FindField("Light", "constant"),
       _level->running.GetTime() + static_cast<double>(blend * _step));
 
+    // and the fog of the level: how thick, and its colour as where the
+    // light stands
+    _world->SetNumber(_clock, _world->FindField("Light", "linear"), _view->GetFogDensity());
+    const std::array<float, 3> fog = _view->GetFogColour();
+    _world->SetVector3(_clock, _position_field, {fog[0], fog[1], fog[2]});
+
     ShowHud();
 
     // every sprite turns to where it is looked at from

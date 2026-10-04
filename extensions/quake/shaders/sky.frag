@@ -32,5 +32,5 @@ void main()
 
     // black in the clouds is where they are not
     float there = step(0.004, dot(clouds.rgb, vec3(1.0)));
-    frag_color = vec4(mix(far.rgb, clouds.rgb, there), 1.0);
+    frag_color = vec4(sky_in_fog(mix(far.rgb, clouds.rgb, there)), 1.0);
 }

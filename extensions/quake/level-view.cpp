@@ -317,6 +317,21 @@ namespace quake
           world.SetTexts(entity, textures_field, {picture});
         }
 
+        // A liquid is seen through as much as the level says: its colour is
+        // white with that much of it solid.
+        if (group.is_liquid && !is_item)
+        {
+          const float alpha = name.starts_with("*lava") ? _lava_alpha
+                              : name.starts_with("*slime") ? _slime_alpha
+                              : name.starts_with("*tele") ? _teleporter_alpha
+                              : _water_alpha;
+          if (alpha < 1.0f)
+          {
+            world.SetText(entity, world.FindField("Renderable", "material.alpha_mode"), "blend");
+            world.SetVector4(entity, world.FindField("Renderable", "material.color"), {1.0f, 1.0f, 1.0f, alpha});
+          }
+        }
+
         // a texture with holes, a fence or the letters of a sign, is seen
         // through where it has them
         if (has_texture && level.textures[group.texture]->HasHoles())
@@ -364,6 +379,7 @@ namespace quake
     _player_placed = false;
     _has_lit = false;
     _has_light = false;
+    _fog_density = 0.0f;
   }
 
   std::array<float, 3> LevelView::FindLight(const BspVector &place, const float least) const
@@ -391,6 +407,63 @@ namespace quake
   {
     const auto found = _parts.find(model);
     return found != _parts.end() ? found->second : 0;
+  }
+
+  void LevelView::ReadSettings(const BspFile &level)
+  {
+    _fog_density = 0.0f;
+    _fog_colour = {0.0f, 0.0f, 0.0f};
+    _water_alpha = _lava_alpha = _slime_alpha = _teleporter_alpha = 1.0f;
+
+    EntityText text;
+    if (std::string problem; !text.Read(level.entities, problem) || text.entities.empty()) { return; }
+    const BspEntity &about = text.entities.front();
+
+    // the fog: how thick, then red, green, and blue
+    if (const std::string *fog = about.Find("fog"); fog != nullptr)
+    {
+      char *end = nullptr;
+      const char *at = fog->c_str();
+      float numbers[4] = {0.0f, 0.3f, 0.3f, 0.3f};
+      for (float &number : numbers)
+      {
+        const float read = std::strtof(at, &end);
+        if (end == at) { break; }
+        number = read;
+        at = end;
+      }
+      _fog_density = std::max(numbers[0], 0.0f);
+      _fog_colour = {numbers[1], numbers[2], numbers[3]};
+    }
+
+    // How much of a liquid is seen through. A level writes the key with or
+    // without a line under it in front; lava, slime, and teleporters are as
+    // the water is unless the level says otherwise.
+    const auto read_alpha = [&about](const char *key, const float otherwise)
+    {
+      for (const std::string name : {std::string(key), "_" + std::string(key)})
+      {
+        if (const std::string *written = about.Find(name); written != nullptr)
+        {
+          return std::clamp(std::strtof(written->c_str(), nullptr), 0.0f, 1.0f);
+        }
+      }
+      return otherwise;
+    };
+    _water_alpha = read_alpha("wateralpha", 1.0f);
+    _lava_alpha = read_alpha("lavaalpha", _water_alpha);
+    _slime_alpha = read_alpha("slimealpha", _water_alpha);
+    _teleporter_alpha = read_alpha("telealpha", 1.0f);
+  }
+
+  float LevelView::GetFogDensity() const
+  {
+    return _fog_density;
+  }
+
+  std::array<float, 3> LevelView::GetFogColour() const
+  {
+    return {std::pow(_fog_colour[0], 2.2f), std::pow(_fog_colour[1], 2.2f), std::pow(_fog_colour[2], 2.2f)};
   }
 
   bool LevelView::ShowItem(const World &world, const GameData &data, const std::string &name, const Entity parent)
@@ -443,6 +516,7 @@ namespace quake
     }
 
     Clear(world);
+    ReadSettings(level);
 
     // The colours of the light, when the level comes with them. Without, or
     // with colours that are not of this level, the light is white.

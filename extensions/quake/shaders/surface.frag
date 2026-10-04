@@ -14,5 +14,5 @@ void main()
 
     if (has_lightmap(object.lightmap)) { shown *= baked_light(object.lightmap, lightmap_coord); }
 
-    frag_color = vec4(shown, object_alpha(object.material, texel.a));
+    frag_color = vec4(in_fog(shown, world_position), object_alpha(object.material, texel.a));
 }

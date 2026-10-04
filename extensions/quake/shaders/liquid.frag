@@ -13,5 +13,7 @@ void main()
     vec2 swum = tex_coord + 0.125 * sin(tex_coord.yx * 8.0 + game_time());
     vec4 texel = read_pixels(diffuse_texture, diffuse_sampler, swum, dFdx(tex_coord), dFdy(tex_coord));
 
-    frag_color = vec4(texel.rgb * vertex_color.rgb, object_alpha(object.material, texel.a));
+    // as much of it is seen through as its colour says
+    vec3 shown = in_fog(texel.rgb * vertex_color.rgb, world_position);
+    frag_color = vec4(shown, object_alpha(object.material, object.color.a));
 }

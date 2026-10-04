@@ -46,6 +46,20 @@ namespace quake
     BspLightPoint _light;
     bool _has_light = false;
 
+    // What the level says of itself that is for drawing it: how thick its
+    // fog is and its colour, as a screen is given it, and how much of each
+    // kind of liquid is seen through, from 0 for all to 1 for none.
+    float _fog_density = 0.0f;
+    std::array<float, 3> _fog_colour{0.0f, 0.0f, 0.0f};
+    float _water_alpha = 1.0f;
+    float _lava_alpha = 1.0f;
+    float _slime_alpha = 1.0f;
+    float _teleporter_alpha = 1.0f;
+
+    /// Reads what the level says of itself for drawing it, from the keys of
+    /// its first entity: `fog`, `wateralpha`, and the like.
+    void ReadSettings(const BspFile &level);
+
     // the entity everything of the level that is shown stands under
     neon::extension::Entity _root = 0;
 
@@ -133,6 +147,12 @@ namespace quake
     /// and takes the colour of its light. `least` is the least light it
     /// has, of 255: what the player holds is never all dark.
     [[nodiscard]] std::array<float, 3> FindLight(const BspVector &place, float least = 0.0f) const;
+
+    /// How thick the fog of the level that is shown is, as the level says
+    /// it, 0 for none, and its colour as the engine multiplies light.
+    [[nodiscard]] float GetFogDensity() const;
+
+    [[nodiscard]] std::array<float, 3> GetFogColour() const;
 
     /// Takes the level that is shown out of the world, with everything
     /// under it. Show() does so itself before it shows another.
