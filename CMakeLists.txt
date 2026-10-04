@@ -42,6 +42,24 @@ target_compile_options(quake-formats PRIVATE -Wall -Wextra -Werror -Wno-unused-p
 # it is linked into a library that is opened while the runtime runs
 set_target_properties(quake-formats PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
+# What the game does with its data, without the engine: the functions of the
+# original's engine that the game code calls, the entities of a level handed
+# to the game code, how time passes for them. Like the formats it knows
+# nothing of Neon Engine and is tested without it. Files and tests are found
+# as for the formats.
+file(GLOB QUAKE_GAME_FILES CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_LIST_DIR}/extensions/quake/game/*.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/extensions/quake/game/*.hpp"
+)
+set(QUAKE_GAME_TESTS ${QUAKE_GAME_FILES})
+list(FILTER QUAKE_GAME_FILES EXCLUDE REGEX "\\.test\\.cpp$")
+list(FILTER QUAKE_GAME_TESTS INCLUDE REGEX "\\.test\\.cpp$")
+
+add_library(quake-game STATIC ${QUAKE_GAME_FILES})
+target_link_libraries(quake-game PUBLIC quake-formats)
+target_compile_options(quake-game PRIVATE -Wall -Wextra -Werror -Wno-unused-parameter)
+set_target_properties(quake-game PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 neon_add_project(quake
         SOURCES
         extensions/quake/quake.cpp
@@ -49,14 +67,16 @@ neon_add_project(quake
         extensions/quake/game-data.hpp
         extensions/quake/level-view.cpp
         extensions/quake/level-view.hpp
+        extensions/quake/model-view.cpp
+        extensions/quake/model-view.hpp
 )
-target_link_libraries(quake-extension PRIVATE quake-formats)
+target_link_libraries(quake-extension PRIVATE quake-game)
 
 
 set(QUAKE_TEST_DATA_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/extensions/quake/assets/id1" CACHE PATH
         "A folder of game data to test the formats with: the data this repository carries, or lq1 of a checkout of LibreQuake")
 
-# Tests of the formats. They need GoogleTest, which is taken from the engine's
+# Tests of the formats and of the game. They need GoogleTest, which is taken from the engine's
 # checkout as sources; nothing of the engine itself is built. `ctest` runs
 # them, and the target quake-tests builds them. They are not part of the
 # default build.
@@ -71,14 +91,17 @@ if (QUAKE_BUILD_TESTS AND EXISTS "${NEON_ENGINE_DIRECTORY}/external/googletest/C
 
   add_custom_target(quake-tests)
 
-  foreach (TEST_SOURCE IN LISTS QUAKE_FORMAT_TESTS)
+  foreach (TEST_SOURCE IN LISTS QUAKE_FORMAT_TESTS QUAKE_GAME_TESTS)
     get_filename_component(TEST_NAME "${TEST_SOURCE}" NAME)
     string(REGEX REPLACE "\\.test\\.cpp$" "" TEST_NAME "${TEST_NAME}")
-    set(TEST_TARGET "quake-formats.${TEST_NAME}.test")
+    # a test is named after the library its file is of: the folder it is in
+    get_filename_component(TEST_FOLDER "${TEST_SOURCE}" DIRECTORY)
+    get_filename_component(TEST_FOLDER "${TEST_FOLDER}" NAME)
+    set(TEST_TARGET "quake-${TEST_FOLDER}.${TEST_NAME}.test")
 
     add_executable(${TEST_TARGET} EXCLUDE_FROM_ALL "${TEST_SOURCE}")
     target_compile_options(${TEST_TARGET} PRIVATE -Wall -Wextra -Werror -Wno-unused-parameter)
-    target_link_libraries(${TEST_TARGET} PRIVATE GTest::gmock_main quake-formats)
+    target_link_libraries(${TEST_TARGET} PRIVATE GTest::gmock_main quake-game)
     # Where data to test with is found: the data this repository carries,
     # unless the build says otherwise. A test that wants a file that is not
     # there skips itself.

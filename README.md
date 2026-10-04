@@ -22,7 +22,9 @@ extensions/quake/
   quake.cpp                 its code: what it brings to the engine
   game-data.hpp/.cpp        the archives of the game, and its palette
   level-view.hpp/.cpp       a level shown in the world of the engine
+  model-view.hpp/.cpp       the models of the game shown on entities of the engine
   formats/                  the formats of the game's data, read from bytes
+  game/                     what the game does with its data, without the engine
   assets/                   its scenes, and the data of the game under id1/
 ```
 
