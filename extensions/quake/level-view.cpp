@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "formats/bsp-mesh.hpp"
+#include "formats/lightmap-atlas.hpp"
 #include "formats/quake-space.hpp"
 
 namespace quake
@@ -19,8 +20,18 @@ namespace quake
     using neon::extension::Vertex;
     using neon::extension::World;
 
-    // how high the eyes of a player are above where the level puts it
-    constexpr float eye_height = 22.0f;
+    // What the light of a level is multiplied by. The game doubles its
+    // light, so that a sample of 128 shows a texture as it is and one of
+    // 255 twice as bright, and it does so with the numbers a screen is
+    // given. The engine multiplies light itself, where twice as much on a
+    // screen is two to the power of 2.2 as much.
+    constexpr double light_strength = 4.59;
+
+    // How far the middle of the body of a player is above where the level
+    // puts it. A level names the place of a box that reaches 24 units down
+    // and 32 up, whose middle is therefore 4 above it; the body of the
+    // scene is placed by its middle.
+    constexpr float middle_height = 4.0f;
 
     /// The three numbers of a key such as `origin`, or false when the
     /// entity has no such key or it holds something else.
@@ -101,7 +112,7 @@ namespace quake
       return;
     }
 
-    origin.z += eye_height;
+    origin.z += middle_height;
     const BspVector place = QuakeSpace::ToEnginePosition(origin);
     _start_position = {place.x, place.y, place.z};
 
@@ -114,17 +125,19 @@ namespace quake
     _has_start = true;
   }
 
-  void LevelView::PlaceCamera(const World &world)
+  void LevelView::PlacePlayer(const World &world)
   {
-    if (!_has_start || _camera_placed) { return; }
+    if (!_has_start || _player_placed) { return; }
 
-    const Entity camera = world.FindEntity("camera");
-    if (camera == 0) { return; }
+    // the player of the scene, or else a camera that flies
+    Entity placed = world.FindEntity("player");
+    if (placed == 0) { placed = world.FindEntity("camera"); }
+    if (placed == 0) { return; }
 
-    world.SetVector3(camera, world.FindField("Transform", "position"), _start_position);
+    world.SetVector3(placed, world.FindField("Transform", "position"), _start_position);
     // pitch, yaw, and roll in degrees
-    world.SetVector3(camera, world.FindField("Transform", "rotation"), {0.0f, _start_yaw, 0.0f});
-    _camera_placed = true;
+    world.SetVector3(placed, world.FindField("Transform", "rotation"), {0.0f, _start_yaw, 0.0f});
+    _player_placed = true;
   }
 
   const std::string &LevelView::FindPicture(
@@ -159,8 +172,57 @@ namespace quake
 
     const NeonField shader_field = world.FindField("Renderable", "shader");
     const NeonField textures_field = world.FindField("Renderable", "textures");
+    const NeonField body_kind_field = world.FindField("RigidBody", "kind");
+    const NeonField collider_shape_field = world.FindField("Collider", "shape");
+    const NeonField lightmap_field = world.FindField("Renderable", "material.lightmap");
+    const NeonField strength_field = world.FindField("Renderable", "material.lightmap_strength");
 
-    // one entity for each texture, with the faces that show it
+    // The light the level carries for this model, packed into pictures. A
+    // level without any is shown as its textures are.
+    LightmapAtlas atlas;
+    std::vector<std::string> lightmaps;
+    if (!level.lighting.empty())
+    {
+      if (std::string problem; !atlas.Build(mesh, problem))
+      {
+        world.Warn("The light of model " + std::to_string(model) + " of " + _map + " cannot be packed: " + problem);
+      } else
+      {
+        // A face the level gave no light is dark in a level that has light,
+        // and not as bright as can be, which is what the atlas makes of it
+        // for the sake of what is drawn without light. Liquids are drawn
+        // without the lightmap below, so its bright spot is put out here.
+        for (std::size_t face = 0; face < atlas.blocks.size(); face++)
+        {
+          const LightmapAtlasBlock &block = atlas.blocks[face];
+          if (block.is_lit || block.page >= atlas.pages.size()) { continue; }
+
+          LightmapAtlasPage &page = atlas.pages[block.page];
+          for (std::uint32_t y = block.y > 0 ? block.y - 1 : 0; y <= block.y + 1 && y < page.height; y++)
+          {
+            for (std::uint32_t x = block.x > 0 ? block.x - 1 : 0; x <= block.x + 1 && x < page.width; x++)
+            {
+              std::uint8_t *pixel = &page.pixels[(static_cast<std::size_t>(y) * page.width + x) * 4];
+              pixel[0] = pixel[1] = pixel[2] = 0;
+            }
+          }
+        }
+
+        for (std::size_t page = 0; page < atlas.pages.size(); page++)
+        {
+          lightmaps.push_back(world.SetImage(
+            "lightmaps/" + _map + "/" + std::to_string(model) + "/" + std::to_string(page),
+            atlas.pages[page].width,
+            atlas.pages[page].height,
+            atlas.pages[page].pixels));
+        }
+      }
+    }
+    const bool is_lit = !lightmaps.empty();
+
+    // one entity for each texture, with the faces that show it; and one for
+    // each page of the light those faces lie on, which is one but for a
+    // level larger than any here
     for (const BspMeshGroup &group : mesh.groups)
     {
       // the sky is no wall with a picture on it
@@ -172,45 +234,79 @@ namespace quake
       const std::string name = has_texture ? level.textures[group.texture]->name : "missing-" + std::to_string(group.texture);
       if (is_unseen(name)) { continue; }
 
-      // The corners the group uses, handed over once each. A corner belongs
-      // to one face and a face to one texture, so the groups share none.
-      std::vector<Vertex> corners;
-      std::vector<std::uint32_t> indices;
-      std::vector<std::uint32_t> place_of(mesh.vertices.size(), UINT32_MAX);
+      // a liquid is shown as it is, and glows in the dark as it does in the
+      // game
+      const bool group_is_lit = is_lit && !group.is_liquid;
+      const std::size_t page_count = group_is_lit ? lightmaps.size() : 1;
 
-      for (const std::uint32_t index : group.indices)
+      for (std::size_t page = 0; page < page_count; page++)
       {
-        if (place_of[index] == UINT32_MAX)
+        // The corners the group uses, handed over once each. A corner belongs
+        // to one face and a face to one texture, so the groups share none.
+        std::vector<Vertex> corners;
+        std::vector<neon::extension::Vector2> light_places;
+        std::vector<std::uint32_t> indices;
+        std::vector<std::uint32_t> place_of(mesh.vertices.size(), UINT32_MAX);
+
+        for (const std::uint32_t index : group.indices)
         {
-          const BspMeshVertex &from = mesh.vertices[index];
-          const BspVector place = QuakeSpace::ToEnginePosition(from.position);
-          const BspVector normal = QuakeSpace::ToEngineDirection(from.normal);
+          // a face lies on one page of the light, with all its corners
+          if (group_is_lit && atlas.vertices[index].page != page) { continue; }
 
-          place_of[index] = static_cast<std::uint32_t>(corners.size());
-          corners.push_back({
-            {place.x, place.y, place.z},
-            {normal.x, normal.y, normal.z},
-            {from.texture_u, from.texture_v},
-            {1.0f, 1.0f, 1.0f, 1.0f},
-          });
+          if (place_of[index] == UINT32_MAX)
+          {
+            const BspMeshVertex &from = mesh.vertices[index];
+            const BspVector place = QuakeSpace::ToEnginePosition(from.position);
+            const BspVector normal = QuakeSpace::ToEngineDirection(from.normal);
+
+            place_of[index] = static_cast<std::uint32_t>(corners.size());
+            corners.push_back({
+              {place.x, place.y, place.z},
+              {normal.x, normal.y, normal.z},
+              {from.texture_u, from.texture_v},
+              {1.0f, 1.0f, 1.0f, 1.0f},
+            });
+            if (group_is_lit) { light_places.push_back({atlas.vertices[index].u, atlas.vertices[index].v}); }
+          }
+          indices.push_back(place_of[index]);
         }
-        indices.push_back(place_of[index]);
+        if (indices.empty()) { continue; }
+
+        // the game winds clockwise seen from outside, the engine the other way
+        for (std::size_t i = 0; i + 2 < indices.size(); i += 3) { std::swap(indices[i + 1], indices[i + 2]); }
+
+        // an entity is known by its name under its parent, so a second page
+        // of the same texture says which it is
+        const Entity entity = world.CreateEntity(page == 0 ? name : name + " " + std::to_string(page), parent);
+        world.AddComponent(entity, "Transform");
+        world.AddComponent(entity, "Renderable");
+        world.SetText(entity, shader_field, "assets://shaders/unlit");
+
+        if (const std::string &picture = FindPicture(world, data, level, group.texture); !picture.empty())
+        {
+          world.SetTexts(entity, textures_field, {picture});
+        }
+
+        if (!world.SetMesh(entity, corners, indices)) { continue; }
+        triangles += indices.size() / 3;
+
+        // What is seen is what is walked on and into: the faces stand still
+        // and collide as the mesh they are. A liquid is waded through.
+        if (!group.is_liquid)
+        {
+          world.AddComponent(entity, "RigidBody");
+          world.SetText(entity, body_kind_field, "static");
+          world.AddComponent(entity, "Collider");
+          world.SetText(entity, collider_shape_field, "mesh");
+        }
+
+        if (group_is_lit && !lightmaps[page].empty())
+        {
+          world.SetMeshLightmap(entity, light_places);
+          world.SetText(entity, lightmap_field, lightmaps[page]);
+          world.SetNumber(entity, strength_field, light_strength);
+        }
       }
-
-      // the game winds clockwise seen from outside, the engine the other way
-      for (std::size_t i = 0; i + 2 < indices.size(); i += 3) { std::swap(indices[i + 1], indices[i + 2]); }
-
-      const Entity entity = world.CreateEntity(name, parent);
-      world.AddComponent(entity, "Transform");
-      world.AddComponent(entity, "Renderable");
-      world.SetText(entity, shader_field, "assets://shaders/unlit");
-
-      if (const std::string &picture = FindPicture(world, data, level, group.texture); !picture.empty())
-      {
-        world.SetTexts(entity, textures_field, {picture});
-      }
-
-      if (world.SetMesh(entity, corners, indices)) { triangles += indices.size() / 3; }
     }
 
     return true;
@@ -218,6 +314,8 @@ namespace quake
 
   bool LevelView::Show(const World &world, const GameData &data, const std::string &map, std::string &error)
   {
+    _map = map;
+
     const std::span<const std::uint8_t> bytes = data.Find(map);
     if (bytes.empty())
     {

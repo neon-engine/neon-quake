@@ -25,9 +25,11 @@ namespace quake
   /// is a volume and no thing to see, and is left out.
   ///
   /// Everything is turned from the space of the game into that of the
-  /// engine on the way, see QuakeSpace. The textures are shown as they are,
-  /// without the light of the level, which comes with lightmaps; the sky is
-  /// left out until it is drawn as one.
+  /// engine on the way, see QuakeSpace. A level is lit by the light it
+  /// carries, its lightmaps, packed into a picture for each model, and is
+  /// stood on and walked into as the mesh it is; the sky
+  /// is left out until it is drawn as one, and liquids are shown as they
+  /// are.
   class LevelView
   {
     // where a player starts, in the space of the engine, once a level that
@@ -35,13 +37,17 @@ namespace quake
     bool _has_start = false;
     neon::extension::Vector3 _start_position{0.0f, 0.0f, 0.0f};
     float _start_yaw = 0.0f;
-    bool _camera_placed = false;
+    bool _player_placed = false;
 
     // The path a material reads the picture of a texture by, by the number
     // of the texture in the level that is shown, so that a picture is made
     // known to the renderer once, however many models show it. It is empty
     // for a texture that has no picture.
     std::map<std::int32_t, std::string> _pictures;
+
+    // the name of the level that is shown, which the pictures of its light
+    // are named after
+    std::string _map;
 
     /// Finds where a player starts among the entities of a level.
     void FindStart(const neon::extension::World &world, const EntityText &text, const std::string &map);
@@ -79,11 +85,11 @@ namespace quake
       const std::string &map,
       std::string &error);
 
-    /// Puts the camera of the scene, the entity `camera`, where a player
-    /// starts, looking the way the level says. The scene is read after the
-    /// level is shown, so this is asked in every frame until the camera is
-    /// there, and does nothing after.
-    void PlaceCamera(const neon::extension::World &world);
+    /// Puts the player of the scene, the entity `player`, or else its
+    /// `camera`, where a player starts, looking the way the level says. The
+    /// scene is read after the level is shown, so this is asked in every
+    /// frame until the entity is there, and does nothing after.
+    void PlacePlayer(const neon::extension::World &world);
   };
 } // quake
 

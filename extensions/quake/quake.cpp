@@ -15,18 +15,18 @@
 
 namespace quake
 {
-  /// Puts the camera where a player starts once the scene has one, which is
-  /// after the level was shown.
-  class CameraPlacing final : public neon::extension::System
+  /// Puts the player where a level says one starts once the scene has one,
+  /// which is after the level was shown.
+  class PlayerPlacing final : public neon::extension::System
   {
     LevelView *_level;
 
   public:
-    explicit CameraPlacing(LevelView *level) { _level = level; }
+    explicit PlayerPlacing(LevelView *level) { _level = level; }
 
     void Update(neon::extension::World &world, const double delta_time) override
     {
-      _level->PlaceCamera(world);
+      _level->PlacePlayer(world);
     }
   };
 
@@ -90,7 +90,7 @@ namespace quake
       _has_data = _data.Load(world, error);
       if (!_has_data) { world.Warn("The data of the game is not there: " + error + ". See README.md"); }
 
-      AddSystem<CameraPlacing>("CameraPlacing", &_level);
+      AddSystem<PlayerPlacing>("PlayerPlacing", &_level);
       return true;
     }
 

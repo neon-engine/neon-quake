@@ -6,10 +6,12 @@ proof that the engine can be extended from outside, and that a game can be
 made on it without touching the engine. The engine knows nothing of Quake.
 
 **Where this stands.** The extension reads the archives of the game and shows
-a level: its walls, floors, and ceilings with their textures, and its doors,
-lifts, and buttons at rest where the level puts them, seen from where a
-player starts, by a camera that flies. The level is not lit by its lightmaps
-yet, nothing can be walked on, and nothing in it moves.
+a level, chosen by a line in a text file: its walls, floors, and ceilings
+with their textures, its doors, lifts, and buttons at rest, all lit by the
+light the level carries. A player stands where the level says one starts and
+walks it: the floor holds, and walls and closed doors stop. Nothing moves or
+opens, and the sky, liquids, and lights that flicker are not drawn as such
+yet.
 
 ## What it is made of
 

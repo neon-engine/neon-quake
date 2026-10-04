@@ -1,13 +1,27 @@
-# What the game starts in: a camera that flies, and nothing else. The
-# extension shows a level around it when the world comes up, and puts the
-# camera where a player starts.
+# What the game starts in: a player and nothing else. The extension shows a
+# level around it when the world comes up, and puts the player where the
+# level says one starts.
 scene: start
 version: 1
 
 entities:
-  - name: camera
+  # The player of the game is 32 units wide and 56 tall, a metre by a metre
+  # and three quarters, with the eyes 46 units above the feet. The body is a
+  # capsule that the physics stands on the floor of the level.
+  - name: player
     components:
       Transform:
         position: [0, 2, 8]
-      Camera: Default
-      Spectator: Default
+      Player:
+        eye_height: 1.44
+      CharacterBody: Default
+      Collider:
+        shape: capsule
+        radius: 0.5
+        height: 1.75
+    children:
+      - name: camera
+        components:
+          Transform: Default
+          Camera: Default
+          SoundListener: Default
