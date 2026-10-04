@@ -638,12 +638,16 @@ namespace
     /// Starts a level of the paks: the world first, then every other
     /// entity of its text, each made, given its fields, and handed to the
     /// function its classname names. False, with nothing run, for a level
-    /// that is not there or is of a format that is not read.
+    /// that is not there or is refused, which fails the test.
     bool StartLevel(const std::string_view name)
     {
       const std::string path = std::format("maps/{}.bsp", name);
       std::string error;
-      if (!_level.Read(RealData::Get().GetBytes(path), error)) { return false; }
+      if (!_level.Read(RealData::Get().GetBytes(path), error))
+      {
+        ADD_FAILURE() << path << ": " << error;
+        return false;
+      }
 
       EntityText entity_text;
       EXPECT_TRUE(entity_text.Read(_level.entities, error)) << path << ": " << error;
@@ -810,7 +814,6 @@ namespace
 
   TEST_F(QcMachineRealDataTest, PlaysEveryLevelOfTheRealGameWithoutAnErrorOfTheMachine)
   {
-    std::vector<std::string> not_read;
     std::int64_t statements = 0;
     std::size_t levels = 0;
     for (const std::string &path : RealData::Get().ListNames("maps"))
@@ -822,11 +825,7 @@ namespace
       const std::string_view level = file.substr(0, file.size() - std::string_view(".bsp").size());
 
       MakeMachine();
-      if (!StartLevel(level))
-      {
-        not_read.emplace_back(level);
-        continue;
-      }
+      if (!StartLevel(level)) { continue; }
       ConnectPlayer();
 
       // The player asks for every weapon, takes each in turn, and holds the
@@ -854,9 +853,7 @@ namespace
     ASSERT_GT(levels, 0u);
 
     std::cout << levels << " levels, " << _spawned.size() << " kinds of entities, " << statements
-              << " statements.\nLevels of a format that is not read:";
-    for (const std::string &level : not_read) { std::cout << " " << level; }
-    std::cout << "\nKinds:";
+              << " statements.\nKinds:";
     for (const auto &[kind, count] : _spawned) { std::cout << " " << kind << " " << count << ","; }
     std::cout << "\nClassnames without a function:";
     for (const std::string &classname : _without) { std::cout << " \"" << classname << "\""; }

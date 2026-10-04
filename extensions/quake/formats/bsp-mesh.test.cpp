@@ -11,11 +11,14 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include "real-data.test.hpp"
+
 namespace
 {
   using quake::BspEdge;
   using quake::BspFace;
   using quake::BspFile;
+  using quake::BspFormat;
   using quake::BspMesh;
   using quake::BspMeshFace;
   using quake::BspMeshVertex;
@@ -24,6 +27,7 @@ namespace
   using quake::BspTextureInfo;
   using quake::BspVector;
   using quake::MipTexture;
+  using quake::RealData;
   using ::testing::ElementsAre;
   using ::testing::HasSubstr;
   using ::testing::IsEmpty;
@@ -67,10 +71,10 @@ namespace
   /// Adds a face with these corners to the level and to its last model. The
   /// face has no lightmap. Every second edge is kept the other way around
   /// and walked backwards, so that both ways are read.
-  BspFace &AddFace(BspFile &file, const std::vector<BspVector> &corners, const std::uint16_t texture_info = 0)
+  BspFace &AddFace(BspFile &file, const std::vector<BspVector> &corners, const std::uint32_t texture_info = 0)
   {
-    const auto first_vertex = static_cast<std::uint16_t>(file.vertices.size());
-    const auto count = static_cast<std::uint16_t>(corners.size());
+    const auto first_vertex = static_cast<std::uint32_t>(file.vertices.size());
+    const auto count = static_cast<std::uint32_t>(corners.size());
     file.vertices.insert(file.vertices.end(), corners.begin(), corners.end());
 
     BspFace face;
@@ -81,10 +85,10 @@ namespace
     face.styles = {0, 255, 255, 255};
     face.light_offset = -1;
 
-    for (std::uint16_t i = 0; i < count; i++)
+    for (std::uint32_t i = 0; i < count; i++)
     {
-      const auto from = static_cast<std::uint16_t>(first_vertex + i);
-      const auto to = static_cast<std::uint16_t>(first_vertex + (i + 1) % count);
+      const auto from = static_cast<std::uint32_t>(first_vertex + i);
+      const auto to = static_cast<std::uint32_t>(first_vertex + (i + 1) % count);
       const auto edge = static_cast<std::int32_t>(file.edges.size());
 
       BspEdge made;
@@ -570,6 +574,36 @@ namespace
     EXPECT_EQ(ReasonOfRefusal(huge), "face 0 has a corner that lies nowhere on its texture");
   }
 
+  /// Makes the mesh of every model of a real level, and looks at what must
+  /// hold for each.
+  void CheckTheMeshesOf(const BspFile &file, const std::string &name)
+  {
+    for (std::size_t model = 0; model < file.models.size(); model++)
+    {
+      BspMesh mesh;
+      std::string error;
+      ASSERT_TRUE(mesh.Build(file, model, error)) << name << ", model " << model << ": " << error;
+      EXPECT_EQ(mesh.faces.size(), static_cast<std::size_t>(file.models[model].face_count));
+
+      // every corner of a lit face lies within its lightmap
+      std::size_t outside = 0;
+      for (const BspMeshFace &face : mesh.faces)
+      {
+        if (face.lightmap_width == 0) { continue; }
+        for (std::uint32_t i = 0; i < face.vertex_count; i++)
+        {
+          const BspMeshVertex &vertex = mesh.vertices[face.first_vertex + i];
+          if (!(vertex.lightmap_u >= 0.0f && vertex.lightmap_u <= 1.0f &&
+            vertex.lightmap_v >= 0.0f && vertex.lightmap_v <= 1.0f))
+          {
+            outside++;
+          }
+        }
+      }
+      EXPECT_EQ(outside, 0u) << name << ", model " << model;
+    }
+  }
+
   TEST(BspMeshTest, MakesTheMeshesOfRealLevelsWhenTheyAreThere)
   {
     const std::filesystem::path maps = std::filesystem::path(QUAKE_TEST_DATA_DIRECTORY) / "maps";
@@ -585,33 +619,33 @@ namespace
       const std::vector<std::uint8_t> bytes(
         (std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
 
-      // a level of another version is not what is read here
       BspFile file;
       std::string error;
-      if (!file.Read(bytes, error)) { continue; }
-
-      for (std::size_t model = 0; model < file.models.size(); model++)
-      {
-        BspMesh mesh;
-        ASSERT_TRUE(mesh.Build(file, model, error)) << entry->path().string() << ", model " << model << ": " << error;
-        EXPECT_EQ(mesh.faces.size(), static_cast<std::size_t>(file.models[model].face_count));
-
-        // every corner of a lit face lies within its lightmap
-        for (const BspMeshFace &face : mesh.faces)
-        {
-          if (face.lightmap_width == 0) { continue; }
-          for (std::uint32_t i = 0; i < face.vertex_count; i++)
-          {
-            const BspMeshVertex &vertex = mesh.vertices[face.first_vertex + i];
-            EXPECT_GE(vertex.lightmap_u, 0.0f);
-            EXPECT_LE(vertex.lightmap_u, 1.0f);
-            EXPECT_GE(vertex.lightmap_v, 0.0f);
-            EXPECT_LE(vertex.lightmap_v, 1.0f);
-          }
-        }
-      }
+      ASSERT_TRUE(file.Read(bytes, error)) << entry->path().string() << ": " << error;
+      CheckTheMeshesOf(file, entry->path().string());
       made++;
     }
-    if (made == 0) { GTEST_SKIP() << "No compiled level of version 29 in " << maps.string(); }
+    if (made == 0) { GTEST_SKIP() << "No compiled level in " << maps.string(); }
+  }
+
+  TEST(BspMeshTest, MakesTheMeshesOfEveryLevelOfThePaksWhateverItsForm)
+  {
+    const RealData &data = RealData::Get();
+    if (!data.IsThere()) { GTEST_SKIP() << data.GetProblem(); }
+
+    std::size_t wide = 0;
+    for (const std::string &name : data.ListNames("maps"))
+    {
+      if (!name.ends_with(".bsp")) { continue; }
+
+      BspFile file;
+      std::string error;
+      ASSERT_TRUE(file.Read(data.GetBytes(name), error)) << name << ": " << error;
+      CheckTheMeshesOf(file, name);
+      if (file.format != BspFormat::Version29) { wide++; }
+    }
+
+    // the one level that is too large for the original's form
+    EXPECT_GT(wide, 0u);
   }
 }

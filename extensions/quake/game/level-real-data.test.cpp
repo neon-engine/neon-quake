@@ -66,13 +66,17 @@ namespace
     /// Starts a level of the paks on a machine made now, as a host does:
     /// the entities handed to the game code, then two frames of a tenth of
     /// a second for everything to settle. False for a level that is not
-    /// there or is of a format that is not read.
+    /// there or is refused, which fails the test.
     bool Start(const std::string_view name, const int skill = 1)
     {
       const std::string path = std::format("maps/{}.bsp", name);
       std::string error;
       _level = {};
-      if (!_level.Read(RealData::Get().GetBytes(path), error)) { return false; }
+      if (!_level.Read(RealData::Get().GetBytes(path), error))
+      {
+        ADD_FAILURE() << path << ": " << error;
+        return false;
+      }
 
       EntityText text;
       EXPECT_TRUE(text.Read(_level.entities, error)) << path << ": " << error;
@@ -265,7 +269,6 @@ namespace
   {
     std::size_t levels = 0;
     std::int64_t statements = 0;
-    std::vector<std::string> not_read;
     std::vector<std::string> object_errors;
     for (const std::string &path : RealData::Get().ListNames("maps"))
     {
@@ -275,22 +278,15 @@ namespace
       if (!file.ends_with(".bsp") || file.starts_with("b_")) { continue; }
       const std::string level(file.substr(0, file.size() - std::string_view(".bsp").size()));
 
-      // a level of a format that is not read is not this test's to mind
-      if (!Start(level))
-      {
-        not_read.push_back(level);
-        continue;
-      }
       Play(level);
+      if (HasFatalFailure()) { continue; }
       levels++;
       statements += _machine->GetStatementsRun();
       for (const std::string &message : _stand_ins->object_errors) { object_errors.push_back(level + ": " + message); }
     }
     EXPECT_GT(levels, 3u);
 
-    std::cout << levels << " levels, " << statements << " statements.\nLevels of a format that is not read:";
-    for (const std::string &level : not_read) { std::cout << " " << level; }
-    std::cout << "\nEntities the game code gave up on:\n";
+    std::cout << levels << " levels, " << statements << " statements.\nEntities the game code gave up on:\n";
     for (const std::string &message : object_errors) { std::cout << "  " << message << "\n"; }
   }
 }

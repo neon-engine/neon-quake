@@ -19,12 +19,13 @@ namespace quake
     /// It means nothing in a level that has no visibility at all.
     std::int32_t visibility_offset = -1;
 
-    std::array<std::int16_t, 3> mins{};
-    std::array<std::int16_t, 3> maxs{};
+    /// The box around it. Version 29 has whole numbers here.
+    std::array<float, 3> mins{};
+    std::array<float, 3> maxs{};
 
     /// Its faces, as entries of the list of faces of leaves.
-    std::uint16_t first_leaf_face = 0;
-    std::uint16_t leaf_face_count = 0;
+    std::uint32_t first_leaf_face = 0;
+    std::uint32_t leaf_face_count = 0;
 
     /// How loud water, sky, slime, and lava sound here.
     std::array<std::uint8_t, 4> ambient_levels{};

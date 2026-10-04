@@ -12,30 +12,42 @@ namespace quake
   namespace
   {
     /// What a lump is called in an error, and how many bytes one of its
-    /// entries takes. A lump of text or of plain bytes has entries of one.
+    /// entries takes in version 29, in `BSP2`, and in `2PSB`. A lump of
+    /// text or of plain bytes has entries of one.
     struct LumpShape
     {
       const char *name;
-      std::size_t entry_size;
+      std::array<std::size_t, 3> entry_sizes;
+
+      [[nodiscard]] constexpr std::size_t GetEntrySize(const BspFormat format) const
+      {
+        return entry_sizes[static_cast<std::size_t>(format)];
+      }
     };
 
     constexpr std::array<LumpShape, BspFile::lump_count> lump_shapes = {{
-      {"entities", 1},
-      {"planes", 20},
-      {"textures", 1},
-      {"vertices", 12},
-      {"visibility", 1},
-      {"nodes", 24},
-      {"texture infos", 40},
-      {"faces", 20},
-      {"lighting", 1},
-      {"clip nodes", 8},
-      {"leaves", 28},
-      {"faces of leaves", 2},
-      {"edges", 4},
-      {"edges of faces", 4},
-      {"models", 64},
+      {"entities", {1, 1, 1}},
+      {"planes", {20, 20, 20}},
+      {"textures", {1, 1, 1}},
+      {"vertices", {12, 12, 12}},
+      {"visibility", {1, 1, 1}},
+      {"nodes", {24, 44, 32}},
+      {"texture infos", {40, 40, 40}},
+      {"faces", {20, 28, 28}},
+      {"lighting", {1, 1, 1}},
+      {"clip nodes", {8, 12, 12}},
+      {"leaves", {28, 44, 32}},
+      {"faces of leaves", {2, 4, 4}},
+      {"edges", {4, 8, 8}},
+      {"edges of faces", {4, 4, 4}},
+      {"models", {64, 64, 64}},
     }};
+
+    /// Whether the form keeps in 32 bits what version 29 keeps in 16.
+    bool is_wide(const BspFormat format)
+    {
+      return format != BspFormat::Version29;
+    }
 
     bool refuse(std::string &error, std::string reason)
     {
@@ -110,11 +122,39 @@ namespace quake
       return vector;
     }
 
-    std::array<std::int16_t, 3> read_corner(ByteReader &reader)
+    /// A corner of the box of a node or a leaf, which only `BSP2` keeps as
+    /// numbers with a fraction.
+    std::array<float, 3> read_corner(ByteReader &reader, const BspFormat format)
     {
-      std::array<std::int16_t, 3> corner{};
-      for (std::int16_t &number : corner) { number = reader.ReadI16(); }
+      std::array<float, 3> corner{};
+      for (float &number : corner)
+      {
+        number = format == BspFormat::Bsp2 ? reader.ReadF32() : static_cast<float>(reader.ReadI16());
+      }
       return corner;
+    }
+
+    /// A number that version 29 keeps in 16 bits without a sign.
+    std::uint32_t read_count(ByteReader &reader, const BspFormat format)
+    {
+      return is_wide(format) ? reader.ReadU32() : reader.ReadU16();
+    }
+
+    /// A child of a node or a clip node, of which the lump has `count`.
+    ///
+    /// Version 29 keeps it in 16 bits. A level with more forks than a
+    /// signed number of those counts keeps the numbers of the forks above
+    /// that as negative ones, as the compilers of today write them and the
+    /// source ports read them: a child is a fork when, read without a sign,
+    /// it is the number of one that is there, and only otherwise the
+    /// negative number it looks like.
+    std::int32_t read_child(ByteReader &reader, const BspFormat format, const std::size_t count)
+    {
+      if (is_wide(format)) { return reader.ReadI32(); }
+
+      const std::uint16_t child = reader.ReadU16();
+      if (child < count) { return child; }
+      return static_cast<std::int16_t>(child);
     }
 
     BspPlane read_plane(ByteReader &reader)
@@ -126,16 +166,16 @@ namespace quake
       return plane;
     }
 
-    BspNode read_node(ByteReader &reader)
+    BspNode read_node(ByteReader &reader, const BspFormat format, const std::size_t count)
     {
       BspNode node;
       node.plane = reader.ReadI32();
-      node.children[0] = reader.ReadI16();
-      node.children[1] = reader.ReadI16();
-      node.mins = read_corner(reader);
-      node.maxs = read_corner(reader);
-      node.first_face = reader.ReadU16();
-      node.face_count = reader.ReadU16();
+      node.children[0] = read_child(reader, format, count);
+      node.children[1] = read_child(reader, format, count);
+      node.mins = read_corner(reader, format);
+      node.maxs = read_corner(reader, format);
+      node.first_face = read_count(reader, format);
+      node.face_count = read_count(reader, format);
       return node;
     }
 
@@ -151,46 +191,57 @@ namespace quake
       return info;
     }
 
-    BspFace read_face(ByteReader &reader)
+    BspFace read_face(ByteReader &reader, const BspFormat format)
     {
       BspFace face;
-      face.plane = reader.ReadU16();
-      face.side = reader.ReadI16();
-      face.first_edge = reader.ReadI32();
-      face.edge_count = reader.ReadU16();
-      face.texture_info = reader.ReadU16();
+      if (is_wide(format))
+      {
+        face.plane = reader.ReadI32();
+        face.side = reader.ReadI32();
+        face.first_edge = reader.ReadI32();
+        face.edge_count = reader.ReadI32();
+        face.texture_info = reader.ReadI32();
+      }
+      else
+      {
+        face.plane = reader.ReadU16();
+        face.side = reader.ReadI16();
+        face.first_edge = reader.ReadI32();
+        face.edge_count = reader.ReadU16();
+        face.texture_info = reader.ReadU16();
+      }
       for (std::uint8_t &style : face.styles) { style = reader.ReadU8(); }
       face.light_offset = reader.ReadI32();
       return face;
     }
 
-    BspClipNode read_clip_node(ByteReader &reader)
+    BspClipNode read_clip_node(ByteReader &reader, const BspFormat format, const std::size_t count)
     {
       BspClipNode node;
       node.plane = reader.ReadI32();
-      node.children[0] = reader.ReadI16();
-      node.children[1] = reader.ReadI16();
+      node.children[0] = read_child(reader, format, count);
+      node.children[1] = read_child(reader, format, count);
       return node;
     }
 
-    BspLeaf read_leaf(ByteReader &reader)
+    BspLeaf read_leaf(ByteReader &reader, const BspFormat format)
     {
       BspLeaf leaf;
       leaf.contents = reader.ReadI32();
       leaf.visibility_offset = reader.ReadI32();
-      leaf.mins = read_corner(reader);
-      leaf.maxs = read_corner(reader);
-      leaf.first_leaf_face = reader.ReadU16();
-      leaf.leaf_face_count = reader.ReadU16();
+      leaf.mins = read_corner(reader, format);
+      leaf.maxs = read_corner(reader, format);
+      leaf.first_leaf_face = read_count(reader, format);
+      leaf.leaf_face_count = read_count(reader, format);
       for (std::uint8_t &level : leaf.ambient_levels) { level = reader.ReadU8(); }
       return leaf;
     }
 
-    BspEdge read_edge(ByteReader &reader)
+    BspEdge read_edge(ByteReader &reader, const BspFormat format)
     {
       BspEdge edge;
-      edge.vertices[0] = reader.ReadU16();
-      edge.vertices[1] = reader.ReadU16();
+      edge.vertices[0] = read_count(reader, format);
+      edge.vertices[1] = read_count(reader, format);
       return edge;
     }
 
@@ -275,7 +326,7 @@ namespace quake
 
       for (std::size_t i = 0; i < file.edges.size(); i++)
       {
-        for (const std::uint16_t vertex : file.edges[i].vertices)
+        for (const std::uint32_t vertex : file.edges[i].vertices)
         {
           if (!is_inside(vertex, file.vertices.size()))
           {
@@ -357,16 +408,17 @@ namespace quake
         {
           return refuse(error, names_outside("node", i, "plane", node.plane, file.planes.size()));
         }
-        for (const std::int16_t child : node.children)
+        for (const std::int32_t child : node.children)
         {
           if (child >= 0 && !is_inside(child, file.nodes.size()))
           {
             return refuse(error, names_outside("node", i, "node", child, file.nodes.size()));
           }
           // a negative child is a leaf, counted down from -1
-          if (child < 0 && !is_inside(-(child + 1), file.leaves.size()))
+          const std::int64_t leaf = -(static_cast<std::int64_t>(child) + 1);
+          if (child < 0 && !is_inside(leaf, file.leaves.size()))
           {
-            return refuse(error, names_outside("node", i, "leaf", -(child + 1), file.leaves.size()));
+            return refuse(error, names_outside("node", i, "leaf", leaf, file.leaves.size()));
           }
         }
         if (!is_range_inside(node.first_face, node.face_count, file.faces.size()))
@@ -383,7 +435,7 @@ namespace quake
         {
           return refuse(error, names_outside("clip node", i, "plane", node.plane, file.planes.size()));
         }
-        for (const std::int16_t child : node.children)
+        for (const std::int32_t child : node.children)
         {
           // a negative child is what fills the space, not an entry
           if (child >= 0 && !is_inside(child, file.clip_nodes.size()))
@@ -438,11 +490,23 @@ namespace quake
     }
 
     ByteReader header(bytes);
-    if (const std::int32_t found = header.ReadI32(); found != version)
+    BspFile file;
+    switch (const std::int32_t found = header.ReadI32())
     {
-      return refuse(error, "the file is version " + std::to_string(found) + ", and only version " +
-        std::to_string(version) + " is read");
+      case version:
+        file.format = BspFormat::Version29;
+        break;
+      case bsp2_magic:
+        file.format = BspFormat::Bsp2;
+        break;
+      case bsp2_rmq_magic:
+        file.format = BspFormat::Bsp2Rmq;
+        break;
+      default:
+        return refuse(error, "the file is version " + std::to_string(found) + ", and only version " +
+          std::to_string(version) + " and the forms BSP2 and 2PSB are read");
     }
+    const BspFormat format = file.format;
 
     if (bytes.size() < header_size)
     {
@@ -450,7 +514,6 @@ namespace quake
         std::to_string(header_size) + " of its header");
     }
 
-    BspFile file;
     std::array<std::span<const std::uint8_t>, lump_count> parts;
     for (std::size_t i = 0; i < lump_count; i++)
     {
@@ -467,20 +530,24 @@ namespace quake
           std::to_string(bytes.size()) + " bytes");
       }
 
-      if (static_cast<std::size_t>(lump.size) % lump_shapes[i].entry_size != 0)
+      if (static_cast<std::size_t>(lump.size) % lump_shapes[i].GetEntrySize(format) != 0)
       {
         return refuse(error, std::string("the lump of ") + lump_shapes[i].name + " has " +
           std::to_string(lump.size) + " bytes, which is not a multiple of the " +
-          std::to_string(lump_shapes[i].entry_size) + " of an entry");
+          std::to_string(lump_shapes[i].GetEntrySize(format)) + " of an entry");
       }
 
       parts[i] = bytes.subspan(static_cast<std::size_t>(lump.offset), static_cast<std::size_t>(lump.size));
     }
 
     const auto part = [&parts](const BspLumpKind kind) { return parts[static_cast<std::size_t>(kind)]; };
-    const auto entry_size = [](const BspLumpKind kind)
+    const auto entry_size = [format](const BspLumpKind kind)
     {
-      return lump_shapes[static_cast<std::size_t>(kind)].entry_size;
+      return lump_shapes[static_cast<std::size_t>(kind)].GetEntrySize(format);
+    };
+    const auto count_of = [&part, &entry_size](const BspLumpKind kind)
+    {
+      return part(kind).size() / entry_size(kind);
     };
 
     // the text ends at its zero, which the tools write after it
@@ -493,17 +560,32 @@ namespace quake
     file.planes = read_entries<BspPlane>(part(BspLumpKind::Planes), entry_size(BspLumpKind::Planes), read_plane);
     file.vertices =
       read_entries<BspVector>(part(BspLumpKind::Vertices), entry_size(BspLumpKind::Vertices), read_vector);
-    file.nodes = read_entries<BspNode>(part(BspLumpKind::Nodes), entry_size(BspLumpKind::Nodes), read_node);
+    file.nodes = read_entries<BspNode>(
+      part(BspLumpKind::Nodes), entry_size(BspLumpKind::Nodes),
+      [format, count = count_of(BspLumpKind::Nodes)](ByteReader &reader)
+      {
+        return read_node(reader, format, count);
+      });
     file.texture_infos = read_entries<BspTextureInfo>(
       part(BspLumpKind::TextureInfos), entry_size(BspLumpKind::TextureInfos), read_texture_info);
-    file.faces = read_entries<BspFace>(part(BspLumpKind::Faces), entry_size(BspLumpKind::Faces), read_face);
+    file.faces = read_entries<BspFace>(
+      part(BspLumpKind::Faces), entry_size(BspLumpKind::Faces),
+      [format](ByteReader &reader) { return read_face(reader, format); });
     file.clip_nodes = read_entries<BspClipNode>(
-      part(BspLumpKind::ClipNodes), entry_size(BspLumpKind::ClipNodes), read_clip_node);
-    file.leaves = read_entries<BspLeaf>(part(BspLumpKind::Leaves), entry_size(BspLumpKind::Leaves), read_leaf);
-    file.leaf_faces = read_entries<std::uint16_t>(
+      part(BspLumpKind::ClipNodes), entry_size(BspLumpKind::ClipNodes),
+      [format, count = count_of(BspLumpKind::ClipNodes)](ByteReader &reader)
+      {
+        return read_clip_node(reader, format, count);
+      });
+    file.leaves = read_entries<BspLeaf>(
+      part(BspLumpKind::Leaves), entry_size(BspLumpKind::Leaves),
+      [format](ByteReader &reader) { return read_leaf(reader, format); });
+    file.leaf_faces = read_entries<std::uint32_t>(
       part(BspLumpKind::LeafFaces), entry_size(BspLumpKind::LeafFaces),
-      [](ByteReader &reader) { return reader.ReadU16(); });
-    file.edges = read_entries<BspEdge>(part(BspLumpKind::Edges), entry_size(BspLumpKind::Edges), read_edge);
+      [format](ByteReader &reader) { return read_count(reader, format); });
+    file.edges = read_entries<BspEdge>(
+      part(BspLumpKind::Edges), entry_size(BspLumpKind::Edges),
+      [format](ByteReader &reader) { return read_edge(reader, format); });
     file.face_edges = read_entries<std::int32_t>(
       part(BspLumpKind::FaceEdges), entry_size(BspLumpKind::FaceEdges),
       [](ByteReader &reader) { return reader.ReadI32(); });

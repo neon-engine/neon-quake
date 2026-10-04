@@ -12,6 +12,7 @@
 #include "bsp-clip-node.hpp"
 #include "bsp-edge.hpp"
 #include "bsp-face.hpp"
+#include "bsp-format.hpp"
 #include "bsp-leaf.hpp"
 #include "bsp-lump.hpp"
 #include "bsp-model.hpp"
@@ -44,7 +45,12 @@ namespace quake
   };
 
   /// A level of the game, `maps/*.bsp`, as its file has it: version 29, the
-  /// one of the original game.
+  /// one of the original game, or one of the forms that lift its limits,
+  /// `BSP2` and `2PSB`.
+  ///
+  /// The forms have the same lumps, with numbers of different widths. They
+  /// are read into the same entries, which are as wide as the widest form,
+  /// so that what uses a level does not mind which form its file had.
   ///
   /// This is the file and nothing made from it. Every number keeps the
   /// meaning, the units, and the axes of the game, with Z pointing up. What
@@ -55,14 +61,22 @@ namespace quake
   /// there, so that what uses the level may follow them without asking.
   struct BspFile
   {
-    /// The only version that is read.
+    /// What the file of a level of the original game starts with.
     static constexpr std::int32_t version = 29;
+
+    /// What the files of the wider forms start with in the place of a
+    /// version: the letters `BSP2`, and the letters `2PSB`.
+    static constexpr std::int32_t bsp2_magic = 0x32505342;
+    static constexpr std::int32_t bsp2_rmq_magic = 0x42535032;
 
     static constexpr std::size_t lump_count = 15;
 
     /// How many bytes the header takes: the version, and the place and size
     /// of every lump.
     static constexpr std::size_t header_size = 4 + lump_count * 8;
+
+    /// The form the file was written in.
+    BspFormat format = BspFormat::Version29;
 
     /// Where each lump was in the file.
     std::array<BspLump, lump_count> lumps{};
@@ -97,7 +111,7 @@ namespace quake
     std::vector<BspLeaf> leaves;
 
     /// The faces of the leaves: each entry is the number of a face.
-    std::vector<std::uint16_t> leaf_faces;
+    std::vector<std::uint32_t> leaf_faces;
 
     std::vector<BspEdge> edges;
 
@@ -110,7 +124,7 @@ namespace quake
 
     /// Takes the level from the bytes of its file. Returns false, says what
     /// was wrong in `error`, and stays as it was when they are not a level
-    /// of this version, when a lump lies outside them or does not hold whole
+    /// of a form that is read, when a lump lies outside them or does not hold whole
     /// entries, or when an entry names something that is not there.
     bool Read(std::span<const std::uint8_t> bytes, std::string &error);
 

@@ -32,9 +32,9 @@ namespace
   constexpr BspVector player_mins{-16.0f, -16.0f, -24.0f};
   constexpr BspVector player_maxs{16.0f, 16.0f, 32.0f};
 
-  /// The levels of the real game that are read, each with its name. A
-  /// level of another version than the original's is refused by the reader
-  /// and left out.
+  /// The levels of the real game, each with its name: those of the
+  /// original's version and the one of the wider form alike. A level that
+  /// is refused fails the test that asked for the levels.
   class BspCollisionRealDataTest : public ::testing::Test
   {
   protected:
@@ -49,10 +49,11 @@ namespace
       {
         if (!name.ends_with(".bsp")) { continue; }
         BspFile file;
-        std::string ignored;
-        if (file.Read(data.GetBytes(name), ignored)) { _levels.emplace_back(name, std::move(file)); }
+        std::string error;
+        if (file.Read(data.GetBytes(name), error)) { _levels.emplace_back(name, std::move(file)); }
+        else { ADD_FAILURE() << name << ": " << error; }
       }
-      if (_levels.empty()) { GTEST_SKIP() << "No level of version 29 in the paks"; }
+      if (_levels.empty()) { GTEST_SKIP() << "No level in the paks"; }
     }
   };
 

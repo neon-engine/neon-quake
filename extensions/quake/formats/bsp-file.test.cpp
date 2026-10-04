@@ -4,6 +4,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <iterator>
 #include <string>
 #include <vector>
@@ -11,10 +12,14 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include "real-data.test.hpp"
+
 namespace
 {
   using quake::BspFile;
+  using quake::BspFormat;
   using quake::BspLumpKind;
+  using quake::RealData;
   using ::testing::ElementsAre;
   using ::testing::HasSubstr;
 
@@ -88,6 +93,46 @@ namespace
     return bytes;
   }
 
+  void SetF32(Bytes &bytes, const std::size_t at, const float value)
+  {
+    std::int32_t bits;
+    std::memcpy(&bits, &value, sizeof(bits));
+    SetI32(bytes, at, bits);
+  }
+
+  /// Whether a form keeps in 32 bits what version 29 keeps in 16.
+  bool IsWide(const BspFormat format)
+  {
+    return format != BspFormat::Version29;
+  }
+
+  /// A number that version 29 keeps in 16 bits and the wider forms in 32:
+  /// a child, a count, or the number of an entry.
+  void PutNumber(Bytes &bytes, const BspFormat format, const std::int32_t value)
+  {
+    if (IsWide(format)) { PutI32(bytes, value); }
+    else { PutI16(bytes, static_cast<std::int16_t>(value)); }
+  }
+
+  /// A number of the box of a node or a leaf, which only `BSP2` keeps with
+  /// a fraction.
+  void PutBound(Bytes &bytes, const BspFormat format, const float value)
+  {
+    if (format == BspFormat::Bsp2) { PutF32(bytes, value); }
+    else { PutI16(bytes, static_cast<std::int16_t>(value)); }
+  }
+
+  /// What the file of a form starts with.
+  std::int32_t VersionOf(const BspFormat format)
+  {
+    switch (format)
+    {
+      case BspFormat::Bsp2: return BspFile::bsp2_magic;
+      case BspFormat::Bsp2Rmq: return BspFile::bsp2_rmq_magic;
+      default: return BspFile::version;
+    }
+  }
+
   /// A level taken apart into its lumps, so that a test can change one
   /// before the file is put together.
   struct Level
@@ -122,9 +167,12 @@ namespace
   /// corners, 100 by 48 units, looking up. It has two textures, the second
   /// of which is named and not carried, one node with two leaves, one clip
   /// node, and one model.
-  Level MakeQuad()
+  ///
+  /// It is written in the form asked for, with the same numbers in each.
+  Level MakeQuad(const BspFormat format = BspFormat::Version29)
   {
     Level level;
+    level.version = VersionOf(format);
 
     const std::string entities = "{\n\"classname\" \"worldspawn\"\n}\n";
     Bytes &text = level.Lump(BspLumpKind::Entities);
@@ -153,11 +201,11 @@ namespace
 
     Bytes &nodes = level.Lump(BspLumpKind::Nodes);
     PutI32(nodes, 0);
-    PutI16(nodes, -2);
-    PutI16(nodes, -1);
-    for (const std::int16_t number : {0, 0, -16, 100, 48, 16}) { PutI16(nodes, number); }
-    PutU16(nodes, 0);
-    PutU16(nodes, 1);
+    PutNumber(nodes, format, -2);
+    PutNumber(nodes, format, -1);
+    for (const float number : {0.0f, 0.0f, -16.0f, 100.0f, 48.0f, 16.0f}) { PutBound(nodes, format, number); }
+    PutNumber(nodes, format, 0);
+    PutNumber(nodes, format, 1);
 
     Bytes &infos = level.Lump(BspLumpKind::TextureInfos);
     PutVector(infos, 1.0f, 0.0f, 0.0f);
@@ -168,11 +216,11 @@ namespace
     PutI32(infos, 0);
 
     Bytes &faces = level.Lump(BspLumpKind::Faces);
-    PutU16(faces, 0);
-    PutI16(faces, 0);
+    PutNumber(faces, format, 0);
+    PutNumber(faces, format, 0);
     PutI32(faces, 0);
-    PutU16(faces, 4);
-    PutU16(faces, 0);
+    PutNumber(faces, format, 4);
+    PutNumber(faces, format, 0);
     for (const std::uint8_t style : {0, 255, 255, 255}) { PutU8(faces, style); }
     PutI32(faces, 4);
 
@@ -183,29 +231,29 @@ namespace
 
     Bytes &clip_nodes = level.Lump(BspLumpKind::ClipNodes);
     PutI32(clip_nodes, 0);
-    PutI16(clip_nodes, -1);
-    PutI16(clip_nodes, -2);
+    PutNumber(clip_nodes, format, -1);
+    PutNumber(clip_nodes, format, -2);
 
     // leaf 0 is everything solid, leaf 1 is the room above the floor
     Bytes &leaves = level.Lump(BspLumpKind::Leaves);
     PutI32(leaves, -2);
     PutI32(leaves, -1);
-    for (int i = 0; i < 6; i++) { PutI16(leaves, 0); }
-    PutU16(leaves, 0);
-    PutU16(leaves, 0);
+    for (int i = 0; i < 6; i++) { PutBound(leaves, format, 0.0f); }
+    PutNumber(leaves, format, 0);
+    PutNumber(leaves, format, 0);
     for (int i = 0; i < 4; i++) { PutU8(leaves, 0); }
     PutI32(leaves, -1);
     PutI32(leaves, 0);
-    for (const std::int16_t number : {0, 0, 0, 100, 48, 16}) { PutI16(leaves, number); }
-    PutU16(leaves, 0);
-    PutU16(leaves, 1);
+    for (const float number : {0.0f, 0.0f, 0.0f, 100.0f, 48.0f, 16.0f}) { PutBound(leaves, format, number); }
+    PutNumber(leaves, format, 0);
+    PutNumber(leaves, format, 1);
     for (const std::uint8_t level_of_sound : {10, 20, 30, 40}) { PutU8(leaves, level_of_sound); }
 
-    PutU16(level.Lump(BspLumpKind::LeafFaces), 0);
+    PutNumber(level.Lump(BspLumpKind::LeafFaces), format, 0);
 
     // edge 0 is never used, since an edge of a face says its direction by its sign
     Bytes &edges = level.Lump(BspLumpKind::Edges);
-    for (const std::uint16_t vertex : {0, 0, 0, 1, 1, 2, 3, 2, 3, 0}) { PutU16(edges, vertex); }
+    for (const std::int32_t vertex : {0, 0, 0, 1, 1, 2, 3, 2, 3, 0}) { PutNumber(edges, format, vertex); }
 
     Bytes &face_edges = level.Lump(BspLumpKind::FaceEdges);
     for (const std::int32_t edge : {1, 2, -3, 4}) { PutI32(face_edges, edge); }
@@ -240,6 +288,7 @@ namespace
     BspFile file;
     std::string error;
     ASSERT_TRUE(file.Read(bytes, error)) << error;
+    EXPECT_EQ(file.format, BspFormat::Version29);
 
     EXPECT_EQ(file.GetLump(BspLumpKind::Entities).offset, 124);
     EXPECT_EQ(file.GetLump(BspLumpKind::Entities).size, 30);
@@ -369,12 +418,369 @@ namespace
     EXPECT_FALSE(file.Read(other.ToBytes(), error));
     EXPECT_THAT(error, HasSubstr("version 30"));
 
-    // the level of the tools that lift the limits, whose version is the letters "BSP2"
-    other.version = 0x32505342;
-    EXPECT_FALSE(file.Read(other.ToBytes(), error));
-    EXPECT_THAT(error, HasSubstr("version"));
+    EXPECT_THAT(error, HasSubstr("BSP2"));
 
     EXPECT_EQ(file.vertices.size(), 4u);
+    EXPECT_EQ(file.format, BspFormat::Version29);
+  }
+
+  /// The two forms that lift the limits of version 29.
+  constexpr std::array<BspFormat, 2> wide_formats = {BspFormat::Bsp2, BspFormat::Bsp2Rmq};
+
+  /// Where the numbers of the entries of the wider forms lie, in bytes
+  /// from the start of an entry. A node and a leaf of `2PSB` have a shorter
+  /// box, and what follows it lies earlier.
+  constexpr std::size_t wide_node_size = 44;
+  constexpr std::size_t rmq_node_size = 32;
+  constexpr std::size_t wide_node_children = 4;
+  constexpr std::size_t wide_node_maxs = 24;
+  constexpr std::size_t wide_node_first_face = 36;
+  constexpr std::size_t rmq_node_first_face = 24;
+  constexpr std::size_t wide_face_size = 28;
+  constexpr std::size_t wide_face_plane = 0;
+  constexpr std::size_t wide_face_side = 4;
+  constexpr std::size_t wide_face_first_edge = 8;
+  constexpr std::size_t wide_face_edge_count = 12;
+  constexpr std::size_t wide_face_texture_info = 16;
+  constexpr std::size_t wide_face_light_offset = 24;
+  constexpr std::size_t wide_clip_node_size = 12;
+  constexpr std::size_t wide_clip_node_children = 4;
+  constexpr std::size_t wide_leaf_size = 44;
+  constexpr std::size_t wide_leaf_maxs = 20;
+  constexpr std::size_t wide_leaf_first_face = 32;
+  constexpr std::size_t rmq_leaf_size = 32;
+  constexpr std::size_t rmq_leaf_first_face = 20;
+  constexpr std::size_t wide_edge_size = 8;
+
+  TEST(BspFileTest, ReadsEveryLumpOfTheWiderFormsIntoTheSameEntries)
+  {
+    BspFile narrow;
+    std::string error;
+    ASSERT_TRUE(narrow.Read(MakeQuad().ToBytes(), error)) << error;
+
+    for (const BspFormat format : wide_formats)
+    {
+      const Level level = MakeQuad(format);
+      const bool with_fractions = format == BspFormat::Bsp2;
+      EXPECT_EQ(level.lumps[static_cast<std::size_t>(BspLumpKind::Nodes)].size(), with_fractions ? 44u : 32u);
+      EXPECT_EQ(level.lumps[static_cast<std::size_t>(BspLumpKind::Faces)].size(), 28u);
+      EXPECT_EQ(level.lumps[static_cast<std::size_t>(BspLumpKind::ClipNodes)].size(), 12u);
+      EXPECT_EQ(level.lumps[static_cast<std::size_t>(BspLumpKind::Leaves)].size(), with_fractions ? 88u : 64u);
+      EXPECT_EQ(level.lumps[static_cast<std::size_t>(BspLumpKind::LeafFaces)].size(), 4u);
+      EXPECT_EQ(level.lumps[static_cast<std::size_t>(BspLumpKind::Edges)].size(), 40u);
+
+      BspFile file;
+      ASSERT_TRUE(file.Read(level.ToBytes(), error)) << error;
+      EXPECT_EQ(file.format, format);
+
+      EXPECT_EQ(file.entities, narrow.entities);
+      EXPECT_EQ(file.planes.size(), 1u);
+      EXPECT_EQ(file.vertices.size(), 4u);
+      EXPECT_EQ(file.textures.size(), 2u);
+      EXPECT_EQ(file.lighting, narrow.lighting);
+      EXPECT_EQ(file.visibility, narrow.visibility);
+
+      ASSERT_EQ(file.nodes.size(), 1u);
+      EXPECT_EQ(file.nodes[0].plane, 0);
+      EXPECT_THAT(file.nodes[0].children, ElementsAre(-2, -1));
+      EXPECT_THAT(file.nodes[0].mins, ElementsAre(0, 0, -16));
+      EXPECT_THAT(file.nodes[0].maxs, ElementsAre(100, 48, 16));
+      EXPECT_EQ(file.nodes[0].first_face, 0u);
+      EXPECT_EQ(file.nodes[0].face_count, 1u);
+
+      ASSERT_EQ(file.faces.size(), 1u);
+      EXPECT_EQ(file.faces[0].plane, 0);
+      EXPECT_EQ(file.faces[0].side, 0);
+      EXPECT_EQ(file.faces[0].first_edge, 0);
+      EXPECT_EQ(file.faces[0].edge_count, 4);
+      EXPECT_EQ(file.faces[0].texture_info, 0);
+      EXPECT_THAT(file.faces[0].styles, ElementsAre(0, 255, 255, 255));
+      EXPECT_EQ(file.faces[0].light_offset, 4);
+
+      ASSERT_EQ(file.clip_nodes.size(), 1u);
+      EXPECT_EQ(file.clip_nodes[0].plane, 0);
+      EXPECT_THAT(file.clip_nodes[0].children, ElementsAre(-1, -2));
+
+      ASSERT_EQ(file.leaves.size(), 2u);
+      EXPECT_EQ(file.leaves[0].contents, -2);
+      EXPECT_EQ(file.leaves[1].contents, -1);
+      EXPECT_EQ(file.leaves[1].visibility_offset, 0);
+      EXPECT_THAT(file.leaves[1].mins, ElementsAre(0, 0, 0));
+      EXPECT_THAT(file.leaves[1].maxs, ElementsAre(100, 48, 16));
+      EXPECT_EQ(file.leaves[1].first_leaf_face, 0u);
+      EXPECT_EQ(file.leaves[1].leaf_face_count, 1u);
+      EXPECT_THAT(file.leaves[1].ambient_levels, ElementsAre(10, 20, 30, 40));
+
+      EXPECT_THAT(file.leaf_faces, ElementsAre(0));
+
+      ASSERT_EQ(file.edges.size(), 5u);
+      EXPECT_THAT(file.edges[1].vertices, ElementsAre(0, 1));
+      EXPECT_THAT(file.edges[3].vertices, ElementsAre(3, 2));
+      EXPECT_THAT(file.face_edges, ElementsAre(1, 2, -3, 4));
+
+      ASSERT_EQ(file.models.size(), 1u);
+      EXPECT_EQ(file.models[0].face_count, 1);
+    }
+  }
+
+  TEST(BspFileTest, KeepsTheFractionsOfTheBoxesAndTheSideOfAFaceOfBsp2)
+  {
+    Level level = MakeQuad(BspFormat::Bsp2);
+    SetF32(level.Lump(BspLumpKind::Nodes), wide_node_maxs, 100.5f);
+    SetF32(level.Lump(BspLumpKind::Leaves), wide_leaf_size + wide_leaf_maxs + 8, 40000.25f);
+    SetI32(level.Lump(BspLumpKind::Faces), wide_face_side, 1);
+
+    BspFile file;
+    std::string error;
+    ASSERT_TRUE(file.Read(level.ToBytes(), error)) << error;
+    EXPECT_THAT(file.nodes[0].maxs, ElementsAre(100.5f, 48.0f, 16.0f));
+    EXPECT_THAT(file.leaves[1].maxs, ElementsAre(100.0f, 48.0f, 40000.25f));
+    EXPECT_EQ(file.faces[0].side, 1);
+  }
+
+  /// Makes a lump as long as `count` entries of `entry_size` bytes, the new
+  /// ones all zeros.
+  void Lengthen(Bytes &lump, const std::size_t entry_size, const std::size_t count)
+  {
+    lump.resize(entry_size * count, 0);
+  }
+
+  TEST(BspFileTest, ReadsNumbersOfTheWiderFormsThatSixteenBitsDoNotHold)
+  {
+    // 70000 of everything that is named by a number that was widened. The
+    // entries added are all zeros, which name the first entry of each lump
+    constexpr std::size_t many = 70000;
+    constexpr std::int32_t last = 69999;
+
+    for (const BspFormat format : wide_formats)
+    {
+      const bool with_fractions = format == BspFormat::Bsp2;
+      const std::size_t leaf_size = with_fractions ? wide_leaf_size : rmq_leaf_size;
+      const std::size_t node_size = with_fractions ? wide_node_size : rmq_node_size;
+      const std::size_t node_first_face = with_fractions ? wide_node_first_face : rmq_node_first_face;
+      const std::size_t leaf_first_face = with_fractions ? wide_leaf_first_face : rmq_leaf_first_face;
+
+      Level level = MakeQuad(format);
+      Lengthen(level.Lump(BspLumpKind::Planes), 20, many);
+      Lengthen(level.Lump(BspLumpKind::Vertices), 12, many);
+      Lengthen(level.Lump(BspLumpKind::TextureInfos), 40, many);
+      Lengthen(level.Lump(BspLumpKind::Nodes), node_size, many);
+      Lengthen(level.Lump(BspLumpKind::ClipNodes), wide_clip_node_size, many);
+      Lengthen(level.Lump(BspLumpKind::Leaves), leaf_size, many);
+      Lengthen(level.Lump(BspLumpKind::LeafFaces), 4, many);
+      Lengthen(level.Lump(BspLumpKind::Faces), wide_face_size, many);
+      Lengthen(level.Lump(BspLumpKind::Edges), wide_edge_size, many);
+      Lengthen(level.Lump(BspLumpKind::FaceEdges), 4, many);
+
+      // a face of zeros has its lightmap at byte 0, which is there
+      Bytes &nodes = level.Lump(BspLumpKind::Nodes);
+      SetI32(nodes, wide_node_children, last);
+      SetI32(nodes, wide_node_children + 4, -static_cast<std::int32_t>(many));
+      SetI32(nodes, node_first_face, last);
+      SetI32(nodes, node_first_face + 4, 1);
+
+      Bytes &faces = level.Lump(BspLumpKind::Faces);
+      SetI32(faces, wide_face_plane, last);
+      SetI32(faces, wide_face_first_edge, 0);
+      SetI32(faces, wide_face_edge_count, static_cast<std::int32_t>(many));
+      SetI32(faces, wide_face_texture_info, last);
+
+      SetI32(level.Lump(BspLumpKind::ClipNodes), wide_clip_node_children, last);
+      SetI32(level.Lump(BspLumpKind::ClipNodes), wide_clip_node_children + 4, -5);
+
+      Bytes &leaves = level.Lump(BspLumpKind::Leaves);
+      SetI32(leaves, leaf_size + leaf_first_face, last);
+      SetI32(leaves, leaf_size + leaf_first_face + 4, 1);
+
+      SetI32(level.Lump(BspLumpKind::LeafFaces), 4 * static_cast<std::size_t>(last), last);
+      SetI32(level.Lump(BspLumpKind::Edges), wide_edge_size + 4, last);
+      SetI32(level.Lump(BspLumpKind::FaceEdges), 4, -last);
+
+      BspFile file;
+      std::string error;
+      ASSERT_TRUE(file.Read(level.ToBytes(), error)) << error;
+
+      ASSERT_EQ(file.nodes.size(), many);
+      EXPECT_THAT(file.nodes[0].children, ElementsAre(69999, -70000));
+      EXPECT_EQ(file.nodes[0].first_face, 69999u);
+      EXPECT_EQ(file.nodes[0].face_count, 1u);
+      EXPECT_EQ(file.faces[0].plane, 69999);
+      EXPECT_EQ(file.faces[0].edge_count, 70000);
+      EXPECT_EQ(file.faces[0].texture_info, 69999);
+      EXPECT_THAT(file.clip_nodes[0].children, ElementsAre(69999, -5));
+      EXPECT_EQ(file.leaves[1].first_leaf_face, 69999u);
+      EXPECT_EQ(file.leaf_faces[69999], 69999u);
+      EXPECT_THAT(file.edges[1].vertices, ElementsAre(0u, 69999u));
+      EXPECT_EQ(file.face_edges[1], -69999);
+    }
+  }
+
+  TEST(BspFileTest, ReadsTheChildrenOfALargeLevelOfVersion29WithoutASign)
+  {
+    // 40001 nodes and clip nodes: number 40000 is -25536 where its parent
+    // names it, as the compilers of today write it
+    constexpr std::size_t many = 40001;
+    Level level = MakeQuad();
+    Lengthen(level.Lump(BspLumpKind::Nodes), 24, many);
+    Lengthen(level.Lump(BspLumpKind::ClipNodes), 8, many);
+    SetI16(level.Lump(BspLumpKind::Nodes), 4, static_cast<std::int16_t>(40000));
+    SetI16(level.Lump(BspLumpKind::ClipNodes), 4, static_cast<std::int16_t>(40000));
+
+    BspFile file;
+    std::string error;
+    ASSERT_TRUE(file.Read(level.ToBytes(), error)) << error;
+    EXPECT_THAT(file.nodes[0].children, ElementsAre(40000, -1));
+    EXPECT_THAT(file.clip_nodes[0].children, ElementsAre(40000, -2));
+
+    // a number that is no node, read without a sign, is still a leaf, and
+    // one that is no clip node is still what fills the space
+    SetI16(level.Lump(BspLumpKind::Nodes), 4, -2);
+    SetI16(level.Lump(BspLumpKind::ClipNodes), 4, -6);
+    ASSERT_TRUE(file.Read(level.ToBytes(), error)) << error;
+    EXPECT_THAT(file.nodes[0].children, ElementsAre(-2, -1));
+    EXPECT_THAT(file.clip_nodes[0].children, ElementsAre(-6, -2));
+
+    // and a leaf that is not there is refused: 50000 is no node, and as a
+    // negative number it is leaf 15535
+    SetI16(level.Lump(BspLumpKind::Nodes), 4, static_cast<std::int16_t>(50000));
+    EXPECT_EQ(ReasonOfRefusal(level), "node 0 names leaf 15535, and there are 2");
+
+    // in a small level a number below 32768 is never a leaf
+    Level small = MakeQuad();
+    SetI16(small.Lump(BspLumpKind::Nodes), 4, 32767);
+    EXPECT_EQ(ReasonOfRefusal(small), "node 0 names node 32767, and there are 1");
+    Level small_clip = MakeQuad();
+    SetI16(small_clip.Lump(BspLumpKind::ClipNodes), 4, 32767);
+    EXPECT_EQ(ReasonOfRefusal(small_clip), "clip node 0 names clip node 32767, and there are 1");
+  }
+
+  TEST(BspFileTest, RefusesALumpOfAWiderFormThatDoesNotHoldWholeEntries)
+  {
+    // the lumps of version 29 under the letters of another form
+    Level narrow = MakeQuad();
+    narrow.version = BspFile::bsp2_magic;
+    EXPECT_EQ(ReasonOfRefusal(narrow),
+      "the lump of nodes has 24 bytes, which is not a multiple of the 44 of an entry");
+    narrow.version = BspFile::bsp2_rmq_magic;
+    EXPECT_EQ(ReasonOfRefusal(narrow),
+      "the lump of nodes has 24 bytes, which is not a multiple of the 32 of an entry");
+
+    Level faces = MakeQuad(BspFormat::Bsp2);
+    faces.Lump(BspLumpKind::Faces).resize(20);
+    EXPECT_EQ(ReasonOfRefusal(faces), "the lump of faces has 20 bytes, which is not a multiple of the 28 of an entry");
+
+    Level clip_nodes = MakeQuad(BspFormat::Bsp2);
+    clip_nodes.Lump(BspLumpKind::ClipNodes).resize(8);
+    EXPECT_EQ(ReasonOfRefusal(clip_nodes),
+      "the lump of clip nodes has 8 bytes, which is not a multiple of the 12 of an entry");
+
+    // the leaves of one wider form are not those of the other
+    Level leaves = MakeQuad(BspFormat::Bsp2Rmq);
+    leaves.version = BspFile::bsp2_magic;
+    leaves.Lump(BspLumpKind::Nodes) = MakeQuad(BspFormat::Bsp2).Lump(BspLumpKind::Nodes);
+    EXPECT_EQ(ReasonOfRefusal(leaves),
+      "the lump of leaves has 64 bytes, which is not a multiple of the 44 of an entry");
+
+    Level leaf_faces = MakeQuad(BspFormat::Bsp2);
+    leaf_faces.Lump(BspLumpKind::LeafFaces).resize(2);
+    EXPECT_EQ(ReasonOfRefusal(leaf_faces),
+      "the lump of faces of leaves has 2 bytes, which is not a multiple of the 4 of an entry");
+
+    Level edges = MakeQuad(BspFormat::Bsp2);
+    edges.Lump(BspLumpKind::Edges).resize(36);
+    EXPECT_EQ(ReasonOfRefusal(edges), "the lump of edges has 36 bytes, which is not a multiple of the 8 of an entry");
+  }
+
+  TEST(BspFileTest, RefusesAnEntryOfAWiderFormThatNamesWhatIsNotThere)
+  {
+    for (const BspFormat format : wide_formats)
+    {
+      const bool with_fractions = format == BspFormat::Bsp2;
+      const std::size_t leaf_size = with_fractions ? wide_leaf_size : rmq_leaf_size;
+      const std::size_t node_first_face = with_fractions ? wide_node_first_face : rmq_node_first_face;
+      const std::size_t leaf_first_face = with_fractions ? wide_leaf_first_face : rmq_leaf_first_face;
+
+      // numbers that 16 bits do not hold, and negative ones, which version
+      // 29 has no room for
+      Level plane = MakeQuad(format);
+      SetI32(plane.Lump(BspLumpKind::Faces), wide_face_plane, 65536);
+      EXPECT_EQ(ReasonOfRefusal(plane), "face 0 names plane 65536, and there are 1");
+      SetI32(plane.Lump(BspLumpKind::Faces), wide_face_plane, -1);
+      EXPECT_EQ(ReasonOfRefusal(plane), "face 0 names plane -1, and there are 1");
+
+      Level info = MakeQuad(format);
+      SetI32(info.Lump(BspLumpKind::Faces), wide_face_texture_info, 65536);
+      EXPECT_EQ(ReasonOfRefusal(info), "face 0 names texture info 65536, and there are 1");
+      SetI32(info.Lump(BspLumpKind::Faces), wide_face_texture_info, -1);
+      EXPECT_EQ(ReasonOfRefusal(info), "face 0 names texture info -1, and there are 1");
+
+      Level edge_count = MakeQuad(format);
+      SetI32(edge_count.Lump(BspLumpKind::Faces), wide_face_edge_count, 65540);
+      EXPECT_EQ(ReasonOfRefusal(edge_count), "face 0 names 65540 edges of faces from 0, and there are 4");
+      SetI32(edge_count.Lump(BspLumpKind::Faces), wide_face_edge_count, -4);
+      EXPECT_EQ(ReasonOfRefusal(edge_count), "face 0 names -4 edges of faces from 0, and there are 4");
+
+      Level first_edge = MakeQuad(format);
+      SetI32(first_edge.Lump(BspLumpKind::Faces), wide_face_first_edge, 2147483647);
+      EXPECT_EQ(ReasonOfRefusal(first_edge), "face 0 names 4 edges of faces from 2147483647, and there are 4");
+
+      Level light = MakeQuad(format);
+      SetI32(light.Lump(BspLumpKind::Faces), wide_face_light_offset, 36);
+      EXPECT_EQ(ReasonOfRefusal(light), "face 0 names byte of lighting 36, and there are 36");
+
+      Level node = MakeQuad(format);
+      SetI32(node.Lump(BspLumpKind::Nodes), wide_node_children, 65536);
+      EXPECT_EQ(ReasonOfRefusal(node), "node 0 names node 65536, and there are 1");
+
+      // what version 29 would read as node 0 or leaf 0 is neither here
+      Level leaf = MakeQuad(format);
+      SetI32(leaf.Lump(BspLumpKind::Nodes), wide_node_children + 4, -65537);
+      EXPECT_EQ(ReasonOfRefusal(leaf), "node 0 names leaf 65536, and there are 2");
+      SetI32(leaf.Lump(BspLumpKind::Nodes), wide_node_children + 4, -2147483647 - 1);
+      EXPECT_EQ(ReasonOfRefusal(leaf), "node 0 names leaf 2147483647, and there are 2");
+
+      Level node_faces = MakeQuad(format);
+      SetI32(node_faces.Lump(BspLumpKind::Nodes), node_first_face, -1);
+      EXPECT_EQ(ReasonOfRefusal(node_faces), "node 0 names 1 faces from 4294967295, and there are 1");
+      SetI32(node_faces.Lump(BspLumpKind::Nodes), node_first_face, 0);
+      SetI32(node_faces.Lump(BspLumpKind::Nodes), node_first_face + 4, 65537);
+      EXPECT_EQ(ReasonOfRefusal(node_faces), "node 0 names 65537 faces from 0, and there are 1");
+
+      Level clip_node = MakeQuad(format);
+      SetI32(clip_node.Lump(BspLumpKind::ClipNodes), wide_clip_node_children, 65536);
+      EXPECT_EQ(ReasonOfRefusal(clip_node), "clip node 0 names clip node 65536, and there are 1");
+
+      Level leaf_faces = MakeQuad(format);
+      SetI32(leaf_faces.Lump(BspLumpKind::Leaves), leaf_size + leaf_first_face, 65536);
+      EXPECT_EQ(ReasonOfRefusal(leaf_faces), "leaf 1 names 1 faces of leaves from 65536, and there are 1");
+      SetI32(leaf_faces.Lump(BspLumpKind::Leaves), leaf_size + leaf_first_face, 0);
+      SetI32(leaf_faces.Lump(BspLumpKind::Leaves), leaf_size + leaf_first_face + 4, -1);
+      EXPECT_EQ(ReasonOfRefusal(leaf_faces), "leaf 1 names 4294967295 faces of leaves from 0, and there are 1");
+
+      Level leaf_face = MakeQuad(format);
+      SetI32(leaf_face.Lump(BspLumpKind::LeafFaces), 0, 65536);
+      EXPECT_EQ(ReasonOfRefusal(leaf_face), "face of leaves 0 names face 65536, and there are 1");
+
+      Level vertex = MakeQuad(format);
+      SetI32(vertex.Lump(BspLumpKind::Edges), 2 * wide_edge_size + 4, 65538);
+      EXPECT_EQ(ReasonOfRefusal(vertex), "edge 2 names vertex 65538, and there are 4");
+    }
+  }
+
+  TEST(BspFileTest, NeverReadsOutsideAFileOfAWiderFormCutAnywhere)
+  {
+    for (const BspFormat format : wide_formats)
+    {
+      const Bytes whole = MakeQuad(format).ToBytes();
+      for (std::size_t size = 0; size < whole.size(); size++)
+      {
+        const Bytes cut(whole.begin(), whole.begin() + static_cast<std::ptrdiff_t>(size));
+        BspFile file;
+        std::string error;
+        EXPECT_FALSE(file.Read(cut, error)) << size;
+        EXPECT_FALSE(error.empty()) << size;
+      }
+    }
   }
 
   TEST(BspFileTest, RefusesAFileShorterThanItsHeader)
@@ -674,15 +1080,46 @@ namespace
       std::ifstream stream(path, std::ios::binary);
       const Bytes bytes((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
 
-      // a level of another version is not what this reads
-      if (bytes.size() < 4 || bytes[0] != 29 || bytes[1] != 0 || bytes[2] != 0 || bytes[3] != 0) { continue; }
-
       BspFile file;
       std::string error;
       EXPECT_TRUE(file.Read(bytes, error)) << path.string() << ": " << error;
       EXPECT_FALSE(file.models.empty()) << path.string();
       read++;
     }
-    if (read == 0) { GTEST_SKIP() << "No level of version 29 in " << maps.string(); }
+    EXPECT_GT(read, 0u);
+  }
+
+  TEST(BspFileTest, ReadsEveryLevelOfThePaksAndTheOneThatIsTooLargeForVersion29)
+  {
+    const RealData &data = RealData::Get();
+    if (!data.IsThere()) { GTEST_SKIP() << data.GetProblem(); }
+
+    std::size_t levels = 0;
+    for (const std::string &name : data.ListNames("maps"))
+    {
+      if (!name.ends_with(".bsp")) { continue; }
+
+      BspFile file;
+      std::string error;
+      EXPECT_TRUE(file.Read(data.GetBytes(name), error)) << name << ": " << error;
+      EXPECT_FALSE(file.models.empty()) << name;
+      EXPECT_EQ(file.format, name == "maps/lq_e2m4.bsp" ? BspFormat::Bsp2 : BspFormat::Version29) << name;
+      levels++;
+    }
+    EXPECT_GT(levels, 3u);
+
+    // the level of the wider form has more of something than 16 bits count,
+    // which is why its compiler wrote it so
+    BspFile large;
+    std::string error;
+    ASSERT_TRUE(large.Read(data.GetBytes("maps/lq_e2m4.bsp"), error)) << error;
+    std::cout << "lq_e2m4: " << large.vertices.size() << " vertices, " << large.edges.size() << " edges, "
+              << large.faces.size() << " faces, " << large.leaf_faces.size() << " faces of leaves, "
+              << large.nodes.size() << " nodes, " << large.clip_nodes.size() << " clip nodes, "
+              << large.leaves.size() << " leaves, " << large.planes.size() << " planes\n";
+    EXPECT_TRUE(
+      large.vertices.size() > 65535 || large.edges.size() > 65535 || large.faces.size() > 65535 ||
+      large.leaf_faces.size() > 65535 || large.nodes.size() > 32767 || large.clip_nodes.size() > 32767 ||
+      large.leaves.size() > 32767 || large.planes.size() > 65535);
   }
 }

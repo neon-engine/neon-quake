@@ -21,13 +21,13 @@ namespace quake
   class BspHullBuilder
   {
   public:
-    static constexpr auto empty = static_cast<std::int16_t>(BspContents::Empty);
-    static constexpr auto solid = static_cast<std::int16_t>(BspContents::Solid);
-    static constexpr auto water = static_cast<std::int16_t>(BspContents::Water);
+    static constexpr auto empty = static_cast<std::int32_t>(BspContents::Empty);
+    static constexpr auto solid = static_cast<std::int32_t>(BspContents::Solid);
+    static constexpr auto water = static_cast<std::int32_t>(BspContents::Water);
 
     /// What a node names the two leaves the builder starts with by.
-    static constexpr std::int16_t solid_leaf = -1;
-    static constexpr std::int16_t empty_leaf = -2;
+    static constexpr std::int32_t solid_leaf = -1;
+    static constexpr std::int32_t empty_leaf = -2;
 
     BspFile file;
 
@@ -50,14 +50,14 @@ namespace quake
 
     /// Adds a clip node with a plane of its own and gives its number, which
     /// is what another clip node or a model names it by.
-    std::int16_t ClipNode(
-      const BspVector &normal, const float distance, const std::int16_t front, const std::int16_t back)
+    std::int32_t ClipNode(
+      const BspVector &normal, const float distance, const std::int32_t front, const std::int32_t back)
     {
       BspClipNode node;
       node.plane = Plane(normal, distance);
       node.children = {front, back};
       file.clip_nodes.push_back(node);
-      return static_cast<std::int16_t>(file.clip_nodes.size() - 1);
+      return static_cast<std::int32_t>(file.clip_nodes.size() - 1);
     }
 
     /// Adds the six clip nodes of a box with sides along the axes, and
@@ -65,11 +65,11 @@ namespace quake
     /// comes to `inside`, a clip node or what fills the space, and every
     /// other to `outside`, which is what fills the space: a clip node there
     /// would be reached six ways, and a tree has one way to each.
-    std::int16_t Box(
-      const BspVector &mins, const BspVector &maxs, const std::int16_t inside, const std::int16_t outside)
+    std::int32_t Box(
+      const BspVector &mins, const BspVector &maxs, const std::int32_t inside, const std::int32_t outside)
     {
       // from the last plane to the first, since a clip node names the next
-      std::int16_t next = inside;
+      std::int32_t next = inside;
       next = ClipNode({0.0f, 0.0f, 1.0f}, maxs.z, outside, next);
       next = ClipNode({0.0f, 0.0f, 1.0f}, mins.z, next, outside);
       next = ClipNode({0.0f, 1.0f, 0.0f}, maxs.y, outside, next);
@@ -80,25 +80,25 @@ namespace quake
     }
 
     /// Adds a leaf filled with this and gives what a node names it by.
-    std::int16_t Leaf(const std::int32_t contents)
+    std::int32_t Leaf(const std::int32_t contents)
     {
       BspLeaf leaf;
       leaf.contents = contents;
       file.leaves.push_back(leaf);
-      return static_cast<std::int16_t>(-static_cast<std::int32_t>(file.leaves.size()));
+      return -static_cast<std::int32_t>(file.leaves.size());
     }
 
     /// Adds a node of the tree a level is drawn by, with a plane of its
     /// own, and gives its number. A child is a node, or a leaf as Leaf()
     /// names it.
-    std::int16_t Node(
-      const BspVector &normal, const float distance, const std::int16_t front, const std::int16_t back)
+    std::int32_t Node(
+      const BspVector &normal, const float distance, const std::int32_t front, const std::int32_t back)
     {
       BspNode node;
       node.plane = Plane(normal, distance);
       node.children = {front, back};
       file.nodes.push_back(node);
-      return static_cast<std::int16_t>(file.nodes.size() - 1);
+      return static_cast<std::int32_t>(file.nodes.size() - 1);
     }
 
     /// Adds a model whose three hulls start at these, and gives its number.

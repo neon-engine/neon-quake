@@ -64,8 +64,11 @@ namespace quake
       const BspFace &face = file.faces[face_index];
 
       // a level that was read has all of this, one put together by hand may not
-      if (face.plane >= file.planes.size()) { return refuse(error, face_index, "names a plane that is not there"); }
-      if (face.texture_info >= file.texture_infos.size())
+      if (face.plane < 0 || static_cast<std::size_t>(face.plane) >= file.planes.size())
+      {
+        return refuse(error, face_index, "names a plane that is not there");
+      }
+      if (face.texture_info < 0 || static_cast<std::size_t>(face.texture_info) >= file.texture_infos.size())
       {
         return refuse(error, face_index, "names a texture info that is not there");
       }
@@ -73,14 +76,15 @@ namespace quake
       {
         return refuse(error, face_index, "has " + std::to_string(face.edge_count) + " corners, fewer than three");
       }
+      const auto corner_count = static_cast<std::size_t>(face.edge_count);
       if (face.first_edge < 0 ||
         static_cast<std::size_t>(face.first_edge) > file.face_edges.size() ||
-        face.edge_count > file.face_edges.size() - static_cast<std::size_t>(face.first_edge))
+        corner_count > file.face_edges.size() - static_cast<std::size_t>(face.first_edge))
       {
         return refuse(error, face_index, "names edges of faces that are not there");
       }
 
-      const BspTextureInfo &info = file.texture_infos[face.texture_info];
+      const BspTextureInfo &info = file.texture_infos[static_cast<std::size_t>(face.texture_info)];
       if (info.texture < 0 || static_cast<std::size_t>(info.texture) >= file.textures.size())
       {
         return refuse(error, face_index, "names a texture that is not there");
@@ -91,14 +95,14 @@ namespace quake
       made.face = static_cast<std::uint32_t>(face_index);
       made.texture = info.texture;
       made.first_vertex = static_cast<std::uint32_t>(mesh.vertices.size());
-      made.vertex_count = face.edge_count;
+      made.vertex_count = static_cast<std::uint32_t>(corner_count);
       made.is_sky = texture.has_value() && texture->IsSky();
       made.is_liquid = texture.has_value() && texture->IsLiquid();
       made.light_styles = face.styles;
       made.light_offset = face.light_offset;
 
       // the plane looks one way, and a face on its back looks the other
-      BspVector normal = file.planes[face.plane].normal;
+      BspVector normal = file.planes[static_cast<std::size_t>(face.plane)].normal;
       if (face.side != 0) { normal = {-normal.x, -normal.y, -normal.z}; }
 
       const double texture_width = texture.has_value() ? texture->width : stand_in_texture_size;
@@ -107,13 +111,13 @@ namespace quake
       // where each corner lies on the texture, in its pixels, and how far
       // the face reaches there
       std::vector<std::pair<double, double>> on_texture;
-      on_texture.reserve(face.edge_count);
+      on_texture.reserve(corner_count);
       double least_s = 0.0;
       double least_t = 0.0;
       double most_s = 0.0;
       double most_t = 0.0;
 
-      for (std::size_t corner = 0; corner < face.edge_count; corner++)
+      for (std::size_t corner = 0; corner < corner_count; corner++)
       {
         // an edge of a face is an edge walked forwards, from its first
         // vertex, or, when negative, backwards, from its second
@@ -123,7 +127,7 @@ namespace quake
         {
           return refuse(error, face_index, "names an edge that is not there");
         }
-        const std::uint16_t vertex = file.edges[static_cast<std::size_t>(edge)].vertices[face_edge < 0 ? 1 : 0];
+        const std::uint32_t vertex = file.edges[static_cast<std::size_t>(edge)].vertices[face_edge < 0 ? 1 : 0];
         if (vertex >= file.vertices.size()) { return refuse(error, face_index, "names a vertex that is not there"); }
 
         const BspVector &position = file.vertices[vertex];

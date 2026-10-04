@@ -16,11 +16,12 @@ namespace quake
     /// clip node. A negative one is what fills the space there: -1 nothing,
     /// -2 solid, -3 water, -4 slime, -5 lava, -6 sky.
     ///
-    /// A level with more than 32767 clip nodes keeps the numbers above that
-    /// as negative ones too: read without a sign, a child that is the
-    /// number of a clip node that is there is that clip node. `BspHull`
-    /// reads them so.
-    std::array<std::int16_t, 2> children{};
+    /// They are as wide as the widest form of a level has them. A file of
+    /// version 29 keeps them in 16 bits, and one with more than 32767 clip
+    /// nodes keeps the numbers above that as negative ones: `BspFile` reads
+    /// those back into the numbers of the clip nodes they are, so that a
+    /// negative child here is always what fills the space.
+    std::array<std::int32_t, 2> children{};
   };
 } // quake
 

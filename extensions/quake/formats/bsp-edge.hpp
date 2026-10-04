@@ -9,7 +9,7 @@ namespace quake
   /// A line between two vertices, shared by the faces on both sides of it.
   struct BspEdge
   {
-    std::array<std::uint16_t, 2> vertices{};
+    std::array<std::uint32_t, 2> vertices{};
   };
 } // quake
 

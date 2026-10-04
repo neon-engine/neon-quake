@@ -13,6 +13,7 @@
 #include <gtest/gtest.h>
 
 #include "bsp-file.hpp"
+#include "real-data.test.hpp"
 
 namespace
 {
@@ -26,6 +27,7 @@ namespace
   using quake::LightmapAtlasVertex;
   using quake::LightStyles;
   using quake::LitFile;
+  using quake::RealData;
   using ::testing::Each;
   using ::testing::ElementsAre;
   using ::testing::IsEmpty;
@@ -808,6 +810,62 @@ namespace
     EXPECT_EQ(SampleAt(atlas, atlas.vertices[2]), 4);
   }
 
+  /// Packs the lightmaps of the world of a real level, and looks at what
+  /// must hold for the atlas.
+  void CheckTheAtlasOf(const BspFile &file, const std::string &name)
+  {
+    std::string error;
+    BspMesh mesh;
+    ASSERT_TRUE(mesh.Build(file, 0, error)) << name << ": " << error;
+
+    LightmapAtlas atlas;
+    ASSERT_TRUE(atlas.Build(mesh, error)) << name << ": " << error;
+
+    EXPECT_LE(atlas.side, LightmapAtlas::default_largest_side);
+    EXPECT_FALSE(atlas.pages.empty());
+    for (const LightmapAtlasPage &page : atlas.pages)
+    {
+      EXPECT_EQ(page.width, atlas.side);
+      EXPECT_EQ(page.height, atlas.side);
+      EXPECT_EQ(page.pixels.size(), static_cast<std::size_t>(atlas.side) * atlas.side * 4);
+    }
+
+    ASSERT_EQ(atlas.vertices.size(), mesh.vertices.size());
+    ASSERT_EQ(atlas.blocks.size(), mesh.faces.size());
+    std::size_t outside = 0;
+    for (const LightmapAtlasVertex &vertex : atlas.vertices)
+    {
+      if (!(vertex.u >= 0.0f && vertex.u <= 1.0f && vertex.v >= 0.0f && vertex.v <= 1.0f) ||
+        vertex.page >= atlas.pages.size())
+      {
+        outside++;
+      }
+    }
+    EXPECT_EQ(outside, 0u) << name;
+
+    // every corner of a face lies on the page of its block, and within
+    // the block, the width of a hair allowed for
+    std::size_t astray = 0;
+    for (std::size_t i = 0; i < mesh.faces.size(); i++)
+    {
+      const LightmapAtlasBlock &block = atlas.blocks[i];
+      const auto side = static_cast<float>(atlas.side);
+      for (std::uint32_t corner = 0; corner < mesh.faces[i].vertex_count; corner++)
+      {
+        const LightmapAtlasVertex &vertex = atlas.vertices[mesh.faces[i].first_vertex + corner];
+        const float x = vertex.u * side;
+        const float y = vertex.v * side;
+        if (vertex.page != block.page ||
+          x < static_cast<float>(block.x) - 0.01f || x > static_cast<float>(block.x + block.width) + 0.01f ||
+          y < static_cast<float>(block.y) - 0.01f || y > static_cast<float>(block.y + block.height) + 0.01f)
+        {
+          astray++;
+        }
+      }
+    }
+    EXPECT_EQ(astray, 0u) << name;
+  }
+
   TEST(LightmapAtlasTest, PacksTheLightmapsOfRealLevelsWhenTheyAreThere)
   {
     const std::filesystem::path maps = std::filesystem::path(QUAKE_TEST_DATA_DIRECTORY) / "maps";
@@ -823,63 +881,30 @@ namespace
       const std::vector<std::uint8_t> bytes(
         (std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
 
-      // a level of another version is not what is read here
       BspFile file;
       std::string error;
-      if (!file.Read(bytes, error)) { continue; }
-
-      BspMesh mesh;
-      ASSERT_TRUE(mesh.Build(file, 0, error)) << entry->path().string() << ": " << error;
-
-      LightmapAtlas atlas;
-      ASSERT_TRUE(atlas.Build(mesh, error)) << entry->path().string() << ": " << error;
-
-      EXPECT_LE(atlas.side, LightmapAtlas::default_largest_side);
-      EXPECT_FALSE(atlas.pages.empty());
-      for (const LightmapAtlasPage &page : atlas.pages)
-      {
-        EXPECT_EQ(page.width, atlas.side);
-        EXPECT_EQ(page.height, atlas.side);
-        EXPECT_EQ(page.pixels.size(), static_cast<std::size_t>(atlas.side) * atlas.side * 4);
-      }
-
-      ASSERT_EQ(atlas.vertices.size(), mesh.vertices.size());
-      ASSERT_EQ(atlas.blocks.size(), mesh.faces.size());
-      std::size_t outside = 0;
-      for (const LightmapAtlasVertex &vertex : atlas.vertices)
-      {
-        if (!(vertex.u >= 0.0f && vertex.u <= 1.0f && vertex.v >= 0.0f && vertex.v <= 1.0f) ||
-          vertex.page >= atlas.pages.size())
-        {
-          outside++;
-        }
-      }
-      EXPECT_EQ(outside, 0u) << entry->path().string();
-
-      // every corner of a face lies on the page of its block, and within
-      // the block, the width of a hair allowed for
-      std::size_t astray = 0;
-      for (std::size_t i = 0; i < mesh.faces.size(); i++)
-      {
-        const LightmapAtlasBlock &block = atlas.blocks[i];
-        const auto side = static_cast<float>(atlas.side);
-        for (std::uint32_t corner = 0; corner < mesh.faces[i].vertex_count; corner++)
-        {
-          const LightmapAtlasVertex &vertex = atlas.vertices[mesh.faces[i].first_vertex + corner];
-          const float x = vertex.u * side;
-          const float y = vertex.v * side;
-          if (vertex.page != block.page ||
-            x < static_cast<float>(block.x) - 0.01f || x > static_cast<float>(block.x + block.width) + 0.01f ||
-            y < static_cast<float>(block.y) - 0.01f || y > static_cast<float>(block.y + block.height) + 0.01f)
-          {
-            astray++;
-          }
-        }
-      }
-      EXPECT_EQ(astray, 0u) << entry->path().string();
-
+      ASSERT_TRUE(file.Read(bytes, error)) << entry->path().string() << ": " << error;
+      CheckTheAtlasOf(file, entry->path().string());
+      if (HasFatalFailure()) { return; }
       packed++;
     }
-    if (packed == 0) { GTEST_SKIP() << "No compiled level of version 29 in " << maps.string(); }
+    if (packed == 0) { GTEST_SKIP() << "No compiled level in " << maps.string(); }
+  }
+
+  TEST(LightmapAtlasTest, PacksTheLightmapsOfEveryLevelOfThePaksWhateverItsForm)
+  {
+    const RealData &data = RealData::Get();
+    if (!data.IsThere()) { GTEST_SKIP() << data.GetProblem(); }
+
+    for (const std::string &name : data.ListNames("maps"))
+    {
+      if (!name.ends_with(".bsp")) { continue; }
+
+      BspFile file;
+      std::string error;
+      ASSERT_TRUE(file.Read(data.GetBytes(name), error)) << name << ": " << error;
+      CheckTheAtlasOf(file, name);
+      if (HasFatalFailure()) { return; }
+    }
   }
 }

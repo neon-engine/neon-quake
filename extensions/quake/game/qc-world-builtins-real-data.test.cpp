@@ -99,13 +99,17 @@ namespace
     /// Starts a level of the paks on a machine made now, as a host does:
     /// the builtins registered, the entities handed to the game code, then
     /// two frames of a tenth of a second for everything to settle. False
-    /// for a level that is not there or is of a format that is not read.
+    /// for a level that is not there or is refused, which fails the test.
     bool Start(const std::string_view name)
     {
       const std::string path = std::format("maps/{}.bsp", name);
       std::string error;
       _level = {};
-      if (!_level.Read(RealData::Get().GetBytes(path), error)) { return false; }
+      if (!_level.Read(RealData::Get().GetBytes(path), error))
+      {
+        ADD_FAILURE() << path << ": " << error;
+        return false;
+      }
 
       EntityText text;
       EXPECT_TRUE(text.Read(_level.entities, error)) << path << ": " << error;
@@ -358,7 +362,6 @@ namespace
       if (!file.ends_with(".bsp") || file.starts_with("b_")) { continue; }
       const std::string level(file.substr(0, file.size() - std::string_view(".bsp").size()));
 
-      // a level of a format that is not read is not this test's to mind
       if (!Start(level)) { continue; }
 
       EXPECT_THAT(OfTheMachine(_report.failures), IsEmpty()) << level;

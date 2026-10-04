@@ -182,10 +182,9 @@ namespace
       const std::vector<std::uint8_t> bytes(
         (std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
 
-      // a level of another version is not what is read here
       quake::BspFile file;
       std::string error;
-      if (!file.Read(bytes, error)) { continue; }
+      ASSERT_TRUE(file.Read(bytes, error)) << entry->path().string() << ": " << error;
 
       EntityText entity_text;
       EXPECT_TRUE(entity_text.Read(file.entities, error)) << entry->path().string() << ": " << error;
@@ -194,6 +193,6 @@ namespace
       EXPECT_EQ(*entity_text.entities[0].Find("classname"), "worldspawn") << entry->path().string();
       read++;
     }
-    if (read == 0) { GTEST_SKIP() << "No compiled level of version 29 in " << maps.string(); }
+    if (read == 0) { GTEST_SKIP() << "No compiled level in " << maps.string(); }
   }
 }

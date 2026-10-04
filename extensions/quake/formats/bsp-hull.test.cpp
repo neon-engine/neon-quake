@@ -19,9 +19,9 @@ namespace
   using ::testing::HasSubstr;
   using ::testing::IsEmpty;
 
-  constexpr std::int16_t empty = BspHullBuilder::empty;
-  constexpr std::int16_t solid = BspHullBuilder::solid;
-  constexpr std::int16_t water = BspHullBuilder::water;
+  constexpr std::int32_t empty = BspHullBuilder::empty;
+  constexpr std::int32_t solid = BspHullBuilder::solid;
+  constexpr std::int32_t water = BspHullBuilder::water;
   constexpr float epsilon = BspHull::distance_epsilon;
 
   /// Makes hull 1 of the last model of the level, which must be accepted.
@@ -57,12 +57,12 @@ namespace
   BspHull MakeRoom()
   {
     BspHullBuilder builder;
-    const std::int16_t pool = builder.Box({-64.0f, -64.0f, 0.0f}, {-32.0f, -32.0f, 32.0f}, water, empty);
-    const std::int16_t pillar = builder.Box({-8.0f, -8.0f, 0.0f}, {8.0f, 8.0f, 128.0f}, solid, empty);
+    const std::int32_t pool = builder.Box({-64.0f, -64.0f, 0.0f}, {-32.0f, -32.0f, 32.0f}, water, empty);
+    const std::int32_t pillar = builder.Box({-8.0f, -8.0f, 0.0f}, {8.0f, 8.0f, 128.0f}, solid, empty);
 
     // a plane between the two, so that the tree has one way to each
-    const std::int16_t within = builder.ClipNode({0.0f, 1.0f, 0.0f}, -16.0f, pillar, pool);
-    const std::int16_t room = builder.Box({-64.0f, -64.0f, 0.0f}, {64.0f, 64.0f, 128.0f}, within, solid);
+    const std::int32_t within = builder.ClipNode({0.0f, 1.0f, 0.0f}, -16.0f, pillar, pool);
+    const std::int32_t room = builder.Box({-64.0f, -64.0f, 0.0f}, {64.0f, 64.0f, 128.0f}, within, solid);
     builder.Model(BspHullBuilder::empty_leaf, room, solid);
     return MakeHull(builder);
   }
@@ -114,7 +114,7 @@ namespace
 
   TEST(BspHullTest, MakesWaterOfWaterThatFlows)
   {
-    for (std::int16_t current = -9; current >= -14; current--)
+    for (std::int32_t current = -9; current >= -14; current--)
     {
       BspHullBuilder builder;
       builder.Model(BspHullBuilder::empty_leaf, builder.ClipNode({0.0f, 0.0f, 1.0f}, 0.0f, empty, current), solid);
@@ -126,9 +126,9 @@ namespace
   TEST(BspHullTest, MakesHullZeroOfTheNodesAndWhatFillsTheirLeaves)
   {
     BspHullBuilder builder;
-    const std::int16_t lava = builder.Leaf(static_cast<std::int32_t>(BspContents::Lava));
-    const std::int16_t below = builder.Node({0.0f, 0.0f, 1.0f}, -32.0f, lava, BspHullBuilder::solid_leaf);
-    const std::int16_t head = builder.Node({0.0f, 0.0f, 1.0f}, 0.0f, BspHullBuilder::empty_leaf, below);
+    const std::int32_t lava = builder.Leaf(static_cast<std::int32_t>(BspContents::Lava));
+    const std::int32_t below = builder.Node({0.0f, 0.0f, 1.0f}, -32.0f, lava, BspHullBuilder::solid_leaf);
+    const std::int32_t head = builder.Node({0.0f, 0.0f, 1.0f}, 0.0f, BspHullBuilder::empty_leaf, below);
     builder.Model(head, solid, solid);
 
     BspHull hull;
@@ -168,12 +168,13 @@ namespace
     EXPECT_EQ(result.fraction, 1.0f);
   }
 
-  TEST(BspHullTest, ReadsTheNumberOfAForkAboveWhatASignedNumberHolds)
+  TEST(BspHullTest, TakesTheNumberOfAForkAboveWhatSixteenBitsHold)
   {
-    // clip node 40000 is -25536 where its parent names it
+    // as a level of the wider forms has it, and as `BspFile` makes it of
+    // the negative number a large level of version 29 has in its place
     BspHullBuilder builder;
-    builder.ClipNode({0.0f, 0.0f, 1.0f}, 0.0f, empty, static_cast<std::int16_t>(40000));
-    builder.file.clip_nodes.resize(40000);
+    builder.ClipNode({0.0f, 0.0f, 1.0f}, 0.0f, empty, 70000);
+    builder.file.clip_nodes.resize(70000);
     builder.ClipNode({0.0f, 0.0f, 1.0f}, -32.0f, water, solid);
     builder.Model(BspHullBuilder::empty_leaf, 0, solid);
 
@@ -186,8 +187,8 @@ namespace
     // the same in the tree a level is drawn by, where what is not a node
     // is a leaf
     BspHullBuilder drawn;
-    drawn.Node({0.0f, 0.0f, 1.0f}, 0.0f, BspHullBuilder::empty_leaf, static_cast<std::int16_t>(40000));
-    drawn.file.nodes.resize(40000);
+    drawn.Node({0.0f, 0.0f, 1.0f}, 0.0f, BspHullBuilder::empty_leaf, 70000);
+    drawn.file.nodes.resize(70000);
     drawn.Node({0.0f, 0.0f, 1.0f}, -32.0f, drawn.Leaf(BspHullBuilder::water), BspHullBuilder::solid_leaf);
     drawn.Model(0, solid, solid);
 
@@ -474,7 +475,7 @@ namespace
     // no loop, and all the same a move would walk the shared part once for
     // every way to it, which doubles with every fork of this kind
     BspHullBuilder builder;
-    const std::int16_t shared = builder.ClipNode({0.0f, 0.0f, 1.0f}, 0.0f, empty, solid);
+    const std::int32_t shared = builder.ClipNode({0.0f, 0.0f, 1.0f}, 0.0f, empty, solid);
     builder.Model(BspHullBuilder::empty_leaf, builder.ClipNode({1.0f, 0.0f, 0.0f}, 0.0f, shared, shared), solid);
     EXPECT_EQ(ReasonOfRefusal(builder), "hull 1 of model 0 reaches clip node 0 twice");
   }
@@ -484,7 +485,7 @@ namespace
   BspHullBuilder MakeDeep(const std::size_t forks)
   {
     BspHullBuilder builder;
-    std::int16_t next = BspHullBuilder::solid;
+    std::int32_t next = BspHullBuilder::solid;
     for (std::size_t i = 0; i < forks; i++)
     {
       next = builder.ClipNode({0.0f, 0.0f, 1.0f}, -static_cast<float>(forks - i), empty, next);

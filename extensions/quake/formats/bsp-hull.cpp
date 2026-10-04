@@ -83,7 +83,7 @@ namespace quake
       const std::string who = (of_nodes ? "node " : "clip node ") + std::to_string(index);
       const std::size_t count = of_nodes ? file.nodes.size() : file.clip_nodes.size();
       const std::int32_t plane = of_nodes ? file.nodes[index].plane : file.clip_nodes[index].plane;
-      const std::array<std::int16_t, 2> &children =
+      const std::array<std::int32_t, 2> &children =
         of_nodes ? file.nodes[index].children : file.clip_nodes[index].children;
 
       if (plane < 0 || static_cast<std::size_t>(plane) >= file.planes.size())
@@ -95,20 +95,16 @@ namespace quake
 
       for (std::size_t side = 0; side < 2; side++)
       {
-        // A level with more forks than a signed number of 16 bits counts
-        // keeps the numbers of the forks above that as negative ones, as
-        // the compilers of today write them and the source ports read
-        // them: a child is a fork when, read without a sign, it is the
-        // number of one that is there, and a leaf only otherwise.
+        // a child that is not negative is a fork, whatever form the file
+        // of the level had: `BspFile` made it so when it read the file
         const std::int32_t child = children[side];
-        const auto unsigned_child = static_cast<std::size_t>(static_cast<std::uint16_t>(children[side]));
-        if (unsigned_child < count)
+        if (child >= 0)
         {
-          fork.children[side] = static_cast<std::int32_t>(unsigned_child);
-        }
-        else if (child >= 0)
-        {
-          return refuse(error, names_outside(who, of_nodes ? "node" : "clip node", child, count));
+          if (static_cast<std::size_t>(child) >= count)
+          {
+            return refuse(error, names_outside(who, of_nodes ? "node" : "clip node", child, count));
+          }
+          fork.children[side] = child;
         }
         else if (of_nodes)
         {

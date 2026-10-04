@@ -16,8 +16,8 @@ namespace
   using quake::BspTraceResult;
   using quake::BspVector;
 
-  constexpr std::int16_t empty = BspHullBuilder::empty;
-  constexpr std::int16_t solid = BspHullBuilder::solid;
+  constexpr std::int32_t empty = BspHullBuilder::empty;
+  constexpr std::int32_t solid = BspHullBuilder::solid;
   constexpr float epsilon = BspHull::distance_epsilon;
 
   constexpr BspVector nowhere{0.0f, 0.0f, 0.0f};
@@ -35,11 +35,11 @@ namespace
   BspCollision MakeFloor()
   {
     BspHullBuilder builder;
-    const std::int16_t point_floor =
+    const std::int32_t point_floor =
       builder.Node({0.0f, 0.0f, 1.0f}, 0.0f, BspHullBuilder::empty_leaf, BspHullBuilder::solid_leaf);
-    const std::int16_t player_floor = builder.ClipNode({0.0f, 0.0f, 1.0f}, 24.0f, empty, solid);
-    const std::int16_t large_floor = builder.ClipNode({0.0f, 0.0f, 1.0f}, 24.0f, empty, solid);
-    const std::int16_t large_wall = builder.ClipNode({1.0f, 0.0f, 0.0f}, 100.0f, solid, large_floor);
+    const std::int32_t player_floor = builder.ClipNode({0.0f, 0.0f, 1.0f}, 24.0f, empty, solid);
+    const std::int32_t large_floor = builder.ClipNode({0.0f, 0.0f, 1.0f}, 24.0f, empty, solid);
+    const std::int32_t large_wall = builder.ClipNode({1.0f, 0.0f, 0.0f}, 100.0f, solid, large_floor);
     builder.Model(point_floor, player_floor, large_wall);
 
     BspCollision collision;
