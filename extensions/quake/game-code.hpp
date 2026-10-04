@@ -294,8 +294,10 @@ namespace quake
     std::vector<std::string> _demo_names;
     std::size_t _next_demo = 0;
 
-    // how much the camera sees from top to bottom as it was last told
-    float _shown_field = 0.0f;
+    // whether the camera is told the effect of a view in a liquid, and
+    // whether it was told anything yet
+    bool _is_under = false;
+    bool _has_told_effects = false;
 
     // the lights of explosions, of shots, and of what glows as it flies
     LightView _lights;

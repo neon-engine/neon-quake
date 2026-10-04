@@ -15,6 +15,10 @@ namespace quake
     /// Water, slime, lava, a teleporter: the texture swims.
     static constexpr auto liquid = "extensions://quake/assets/shaders/liquid";
 
+    /// What a camera whose eyes are in a liquid is told as an effect: the
+    /// whole picture waves.
+    static constexpr auto under_water = "extensions://quake/assets/shaders/under-water";
+
     /// The sky: two layers that drift over a dome.
     static constexpr auto sky = "extensions://quake/assets/shaders/sky";
   };

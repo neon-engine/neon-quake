@@ -537,7 +537,8 @@ namespace quake
         if (page >= light.names.size()) { continue; }
 
         const LightmapAtlasPage &pixels = light.atlas.pages[page];
-        world.SetImage(light.names[page], pixels.width, pixels.height, pixels.pixels);
+        // the path is the one the materials have already
+        (void) world.SetImage(light.names[page], pixels.width, pixels.height, pixels.pixels);
       }
     }
   }
