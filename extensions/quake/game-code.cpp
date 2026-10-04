@@ -430,6 +430,13 @@ namespace quake
     PrintToAll(text);
   }
 
+  void GameCode::ClientCommand(const std::int32_t client, const std::string_view text)
+  {
+    // the one thing the game code asks of the player's console: the flash
+    // of something picked up
+    if (to_plain(text) == "bf") { _tint.PickUp(); }
+  }
+
   void GameCode::ServerCommand(const std::string_view text)
   {
     // The one thing the game code asks of the console that is done: a
@@ -827,6 +834,7 @@ namespace quake
     if (fields.dmg_take.Get(machine, player_entity) > 0.0f || fields.dmg_save.Get(machine, player_entity) > 0.0f)
     {
       _status_bar.ShowPain(time);
+      _tint.Hurt(fields.dmg_take.Get(machine, player_entity), fields.dmg_save.Get(machine, player_entity));
       fields.dmg_take.Set(machine, player_entity, 0.0f);
       fields.dmg_save.Set(machine, player_entity, 0.0f);
     }
@@ -870,6 +878,20 @@ namespace quake
     }
 
     _hud.Show(*_world, *_data, _camera, pictures);
+
+    // The colour over the view: what the eyes are in, what the player
+    // carries, and the flashes, which fade. The engine multiplies light, and
+    // the colours are those a screen is given.
+    Vector eyes;
+    FindEyes(eyes);
+    _tint.SetContents(_level->collision.GetPointContents({eyes[0], eyes[1], eyes[2]}));
+    _tint.SetItems(stats.items);
+    _tint.Advance(_frame_time);
+    const ViewTint::Colour tint = _tint.Mix();
+    _hud.ShowTint(*_world, _camera, {
+      std::pow(tint.red / 255.0f, 2.2f), std::pow(tint.green / 255.0f, 2.2f), std::pow(tint.blue / 255.0f, 2.2f),
+      tint.amount,
+    });
   }
 
   void GameCode::ShowView(const float blend)
@@ -899,6 +921,20 @@ namespace quake
       _shown_height = eyes[2];
     }
     eyes[2] = _shown_height;
+
+    // The view bobs with the stride of a player who walks. One who is dead,
+    // or looks at a level that is over, is still.
+    if (!IsPlayerHeld())
+    {
+      const Vector velocity = fields.velocity.Get(machine, player_entity);
+      const double time = _level->running.GetTime() + static_cast<double>(blend * _step);
+
+      auto stride = static_cast<float>(time - std::floor(time / bob_cycle) * bob_cycle) / bob_cycle;
+      constexpr float pi = 3.14159265f;
+      stride = stride < bob_up ? pi * stride / bob_up : pi + pi * (stride - bob_up) / (1.0f - bob_up);
+      const float bob = std::hypot(velocity[0], velocity[1]) * bob_amount;
+      eyes[2] += std::clamp(bob * 0.3f + bob * 0.7f * std::sin(stride), -7.0f, 4.0f);
+    }
 
     const BspVector place = QuakeSpace::ToEnginePosition({eyes[0], eyes[1], eyes[2]});
     _world->SetVector3(_player, _position_field, {place.x, place.y, place.z});
@@ -1063,6 +1099,7 @@ namespace quake
     _has_eyes = false;
     _clock = 0;
     _status_bar.Forget();
+    _tint.Clear();
     _is_over = false;
     _finale_text.clear();
     _messages.clear();

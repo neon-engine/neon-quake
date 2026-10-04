@@ -14,5 +14,7 @@ void main()
 
     if (has_lightmap(object.lightmap)) { shown *= baked_light(object.lightmap, lightmap_coord); }
 
-    frag_color = vec4(in_fog(shown, world_position), object_alpha(object.material, texel.a));
+    // the corners may make it see-through too, as the colour laid over the
+    // view is
+    frag_color = vec4(in_fog(shown, world_position), object_alpha(object.material, texel.a * vertex_color.a));
 }

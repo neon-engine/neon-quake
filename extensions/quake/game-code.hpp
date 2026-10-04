@@ -33,6 +33,7 @@
 #include "game/server-message-listener.hpp"
 #include "game/server-message-reader.hpp"
 #include "game/status-bar.hpp"
+#include "game/view-tint.hpp"
 #include "level-view.hpp"
 #include "model-view.hpp"
 #include "particle-view.hpp"
@@ -135,6 +136,9 @@ namespace quake
     // What is shown on top of the world: the status bar, and what draws it.
     StatusBar _status_bar;
     HudView _hud;
+
+    // the colour laid over what the player sees: a hit, a pickup, water
+    ViewTint _tint;
 
     /// A line the game code printed for the player, and when.
     struct Message
@@ -290,6 +294,13 @@ namespace quake
     static constexpr float most_pitch_up = -70.0f;
     static constexpr float most_pitch_down = 80.0f;
 
+    /// How the view bobs as the player walks, as the original has it: how
+    /// far for the speed, how long a stride takes in seconds, and what part
+    /// of a stride goes up.
+    static constexpr float bob_amount = 0.02f;
+    static constexpr float bob_cycle = 0.6f;
+    static constexpr float bob_up = 0.5f;
+
     /// How fast the eyes follow a step up a stair, in units a second, and
     /// how far they may lag behind it, as in the original.
     static constexpr float eye_rise_speed = 80.0f;
@@ -411,6 +422,8 @@ namespace quake
     void EntityRemoved(std::int32_t entity) override;
 
     void ChangeLevel(std::string_view level) override;
+
+    void ClientCommand(std::int32_t client, std::string_view text) override;
 
     void WriteMessage(QcMessageDestination destination, std::int32_t client, const QcMessageValue &value) override;
 

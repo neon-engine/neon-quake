@@ -65,6 +65,47 @@ namespace quake
     return made;
   }
 
+  void HudView::ShowTint(const World &world, const Entity camera, const NeonColor &colour)
+  {
+    if (camera == 0) { return; }
+    if (camera != _tint_camera)
+    {
+      _tint = 0;
+      _tint_camera = camera;
+    }
+    if (_tint != 0 && colour.r == _tint_colour.r && colour.g == _tint_colour.g && colour.b == _tint_colour.b &&
+        colour.a == _tint_colour.a)
+    {
+      return;
+    }
+    if (_tint == 0 && colour.a <= 0.0f) { return; }
+
+    if (_tint == 0)
+    {
+      // one white pixel, which the corners give their colour
+      const std::string white = world.SetImage("hud/white", 1, 1, {255, 255, 255, 255});
+      _tint = world.CreateEntity("hud tint", camera);
+      world.AddComponent(_tint, "Transform");
+      world.AddComponent(_tint, "Renderable");
+      world.SetText(_tint, world.FindField("Renderable", "shader"), GameShaders::surface);
+      world.SetText(_tint, world.FindField("Renderable", "material.alpha_mode"), "blend");
+      world.SetTexts(_tint, world.FindField("Renderable", "textures"), {white});
+      // behind the pictures, which stand at the distance and nearer
+      world.SetVector3(_tint, world.FindField("Transform", "position"), {0.0f, 0.0f, -layer_step});
+    }
+    _tint_colour = colour;
+
+    // far larger than the view, whatever its shape
+    const float side = distance * 40.0f;
+    const std::vector<Vertex> corners = {
+      {{-side, side, -distance}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}, colour},
+      {{-side, -side, -distance}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}, colour},
+      {{side, -side, -distance}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}, colour},
+      {{side, side, -distance}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f}, colour},
+    };
+    world.SetMesh(_tint, corners, {0, 1, 2, 0, 2, 3});
+  }
+
   std::int32_t HudView::GetWidth(const World &world, const GameData &data, const std::string_view name)
   {
     return Find(world, data, name).width;

@@ -52,6 +52,12 @@ namespace quake
     // the camera the plane stands in front of
     neon::extension::Entity _camera = 0;
 
+    // the entity that lays a colour over the view, the camera it stands in
+    // front of, and the colour it has
+    neon::extension::Entity _tint = 0;
+    neon::extension::Entity _tint_camera = 0;
+    NeonColor _tint_colour{0.0f, 0.0f, 0.0f, 0.0f};
+
     // what is shown, to tell when it has to be made anew
     std::vector<HudPicture> _shown;
 
@@ -80,6 +86,11 @@ namespace quake
       const GameData &data,
       neon::extension::Entity camera,
       const std::vector<HudPicture> &pictures);
+
+    /// Lays a colour over everything the camera sees, behind the pictures:
+    /// red, green, and blue as the engine multiplies light, and how much of
+    /// it, from 0 for none to 1 for nothing else.
+    void ShowTint(const neon::extension::World &world, neon::extension::Entity camera, const NeonColor &colour);
 
     /// The size of a picture of a name in its own pixels, for laying out
     /// what depends on it. Zero for one that is not there.
