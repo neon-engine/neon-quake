@@ -14,5 +14,9 @@ layout (location = 0) out vec4 frag_color;
 layout (set = 0, binding = 2) uniform texture2D diffuse_texture;
 layout (set = 0, binding = 5) uniform sampler diffuse_sampler;
 
+// the pixels of the texture that glow, where a material has such a picture
+layout (set = 0, binding = 4) uniform texture2D glow_texture;
+layout (set = 0, binding = 7) uniform sampler glow_sampler;
+
 #include "lightmap.glsl"
 #include "quake.glsl"

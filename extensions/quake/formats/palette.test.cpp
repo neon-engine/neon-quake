@@ -69,4 +69,30 @@ namespace
     const Palette palette;
     EXPECT_TRUE(palette.ToRgba({}).empty());
   }
+
+  TEST(PaletteTest, KeepsOnlyThePixelsThatGlow)
+  {
+    Palette palette;
+    ASSERT_TRUE(palette.Read(MakeBytes()));
+
+    const std::vector<std::uint8_t> pixels = {3, 224, 223, 255};
+    EXPECT_THAT(
+      palette.ToGlowRgba(pixels),
+      ElementsAre(0, 0, 0, 0, 224, 31, 112, 255, 0, 0, 0, 0, 255, 0, 127, 255));
+
+    // a hole does not glow
+    EXPECT_THAT(
+      palette.ToGlowRgba(pixels, true),
+      ElementsAre(0, 0, 0, 0, 224, 31, 112, 255, 0, 0, 0, 0, 0, 0, 0, 0));
+  }
+
+  TEST(PaletteTest, APictureWithoutAPixelThatGlowsHasNoGlow)
+  {
+    Palette palette;
+    ASSERT_TRUE(palette.Read(MakeBytes()));
+
+    EXPECT_TRUE(palette.ToGlowRgba(std::vector<std::uint8_t>{0, 100, 223}).empty());
+    EXPECT_TRUE(palette.ToGlowRgba(std::vector<std::uint8_t>{255, 5}, true).empty());
+    EXPECT_TRUE(palette.ToGlowRgba({}).empty());
+  }
 }

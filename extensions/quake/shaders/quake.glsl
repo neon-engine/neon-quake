@@ -39,6 +39,28 @@ vec3 sky_in_fog(vec3 shown)
     return as_bright_as_set(scene.numbers[0].x <= 0.0 ? shown : mix(shown, scene.numbers[1].rgb, 0.5));
 }
 
+// The light of what flashes and burns for a moment: an explosion, the shot
+// of a gun, a rocket on its way. The game makes a point light of the engine
+// for each, with its colour as `diffuse` and, as `constant`, how far it
+// reaches in metres. As in the original the light falls off evenly to
+// nothing at that distance, and a wall 64 units inside of it is lit as
+// bright as a texture is. What comes out is added to the light of a level
+// as the level keeps it: 1 for twice as bright as the texture.
+vec3 light_of_the_moment(vec3 at)
+{
+    vec3 sum = vec3(0.0);
+    int count = min(scene.light_counts.x, MAX_POINT_LIGHTS);
+    for (int i = 0; i < count; i++)
+    {
+        float left = scene.point_lights[i].attenuation.x - distance(at, scene.point_lights[i].position.xyz);
+        if (left > 0.0) { sum += scene.point_lights[i].diffuse.rgb * left; }
+    }
+
+    // 32 units to a metre, and 127.5 units of reach for as bright again as
+    // the texture
+    return sum * (32.0 / 127.5);
+}
+
 // A texture read pixel by pixel, as the game shows its pictures: the pixel
 // the place lies in, and not what lies between it and its neighbours. Far
 // away, where a pixel of the screen covers many of the picture, the smaller

@@ -38,6 +38,7 @@
 #include "game/view-tint.hpp"
 #include "level-view.hpp"
 #include "model-view.hpp"
+#include "light-view.hpp"
 #include "particle-view.hpp"
 #include "sound-view.hpp"
 #include "sprite-view.hpp"
@@ -185,6 +186,10 @@ namespace quake
     /// are, and how bright the game is shown.
     void ApplyOptions();
 
+    /// Lights what the game code has flash and glow in this step: the shot
+    /// of a gun, a rocket, who carries a strong or a weak light.
+    void ShowLights();
+
     /// Keeps the game as it is in a place of the menu.
     void Save(std::size_t slot);
 
@@ -270,6 +275,9 @@ namespace quake
 
     // what draws the particles of the level
     ParticleView _particle_view;
+
+    // the lights of explosions, of shots, and of what glows as it flies
+    LightView _lights;
 
     // the models of the level that an entity which went left behind for good
     std::set<std::size_t> _static_parts;

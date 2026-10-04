@@ -35,6 +35,24 @@ namespace quake
     /// pick up does.
     constexpr std::uint32_t turns_flag = 8;
 
+    /// The effect of a model that has it carry a light along: a rocket.
+    constexpr std::uint32_t rocket_flag = 1;
+
+    /// The effects the game code sets on an entity that light what is near:
+    /// a strong light, the flash of a shot, and a weak light.
+    constexpr std::uint32_t bright_light_effect = 1;
+    constexpr std::uint32_t muzzle_flash_effect = 2;
+    constexpr std::uint32_t dim_light_effect = 8;
+
+    /// How far the light of an explosion reaches, in units of the game, how
+    /// long it is there, and how much of its reach it loses in a second.
+    constexpr float explosion_light = 350.0f;
+    constexpr float explosion_light_seconds = 0.5f;
+    constexpr float explosion_light_decay = 300.0f;
+
+    /// How long a light lasts that its entity lights anew in every step.
+    constexpr float carried_light_seconds = 0.05f;
+
     /// The effects of a model that have it leave a trail of particles, a bit
     /// each, and the trail each leaves.
     constexpr std::array<std::pair<std::uint32_t, ParticleTrail>, 7> trails = {{
@@ -166,6 +184,50 @@ namespace quake
       _shown[entity] = {};
     }
     _level->builtins.RemoveEntity(_level->machine, entity);
+  }
+
+  void GameCode::ShowLights()
+  {
+    QcMachine &machine = _level->machine;
+    const QcFields &fields = _level->fields;
+
+    for (std::int32_t entity = 1; entity < machine.GetEntityCount(); entity++)
+    {
+      if (machine.IsEntityFree(entity)) { continue; }
+
+      const auto effects = static_cast<std::uint32_t>(fields.effects.Get(machine, entity));
+      const bool is_rocket = static_cast<std::size_t>(entity) < _shown.size() && _shown[entity].is_alias &&
+                             (_models->GetFlags(_shown[entity].entity) & rocket_flag) != 0;
+      if (effects == 0 && !is_rocket) { continue; }
+
+      const Vector origin = fields.origin.Get(machine, entity);
+      if ((effects & muzzle_flash_effect) != 0)
+      {
+        // a little above and in front of who shot
+        const Vector angles = fields.angles.Get(machine, entity);
+        const float yaw = angles[1] * std::numbers::pi_v<float> / 180.0f;
+        _lights.Flash(
+          entity,
+          {origin[0] + 18.0f * std::cos(yaw), origin[1] + 18.0f * std::sin(yaw), origin[2] + 16.0f},
+          200.0f + _lights.Flicker(),
+          0.1f);
+
+        // The game code sets the flash for one step, and the original takes
+        // it back once it told the players of it.
+        fields.effects.Set(machine, entity, static_cast<float>(effects & ~muzzle_flash_effect));
+      }
+      if ((effects & bright_light_effect) != 0)
+      {
+        _lights.Flash(entity, {origin[0], origin[1], origin[2] + 16.0f}, 400.0f + _lights.Flicker(), carried_light_seconds);
+      }
+      if ((effects & dim_light_effect) != 0)
+      {
+        _lights.Flash(entity, origin, 200.0f + _lights.Flicker(), carried_light_seconds);
+      }
+      if (is_rocket) { _lights.Flash(entity, origin, 200.0f, carried_light_seconds); }
+    }
+
+    _lights.Update(*_world, _root, _level->running.GetTime());
   }
 
   std::string GameCode::MakeName(const std::int32_t entity)
@@ -372,10 +434,12 @@ namespace quake
         break;
       case TempEntityKind::Explosion:
         particles.Explosion(place);
+        _lights.Flash(0, place, explosion_light, explosion_light_seconds, explosion_light_decay);
         PlaySoundAt("weapons/r_exp3.wav", place);
         break;
       case TempEntityKind::TarExplosion:
         particles.BlobExplosion(place);
+        _lights.Flash(0, place, explosion_light, explosion_light_seconds, explosion_light_decay);
         PlaySoundAt("weapons/r_exp3.wav", place);
         break;
       case TempEntityKind::WizardSpike:
@@ -400,6 +464,7 @@ namespace quake
   void GameCode::ColoredExplosion(const ServerMessageTarget &target, const TempEntityExplosion &explosion)
   {
     _level->particles.Explosion2(explosion.position, explosion.color_start, explosion.color_count);
+    _lights.Flash(0, explosion.position, explosion_light, explosion_light_seconds, explosion_light_decay);
     PlaySoundAt("weapons/r_exp3.wav", explosion.position);
   }
 
@@ -628,7 +693,7 @@ namespace quake
       const Vector at = fields.origin.Get(machine, entity);
       const std::array<float, 3> light = shown.model.find("flame") != std::string::npos
                                            ? std::array<float, 3>{1.0f, 1.0f, 1.0f}
-                                           : _view->FindLight({at[0], at[1], at[2]});
+                                           : _view->FindLight({at[0], at[1], at[2]}, 0.0f, _lights.FindLight(at));
       if (!_models->Show(*_world, *_data, shown.entity, shown.model, frame, skin, light))
       {
         Hide(shown);
@@ -657,6 +722,8 @@ namespace quake
     // in every step and does not turn in the original game.
     if (shown.is_part)
     {
+      // a button that was pressed shows the other run of its textures
+      _view->SetPartFrame(read_part_number(shown.model), static_cast<std::int32_t>(fields.frame.Get(machine, entity)));
       if (!shown.is_placed || origin != shown.origin) { Place(shown, origin, angles); }
       shown.origin = origin;
       shown.angles = angles;
@@ -1374,7 +1441,7 @@ namespace quake
     const auto frame = static_cast<std::int32_t>(fields.weaponframe.Get(machine, player_entity));
     // lit by the floor the player stands on, and never all dark
     const Vector at = fields.origin.Get(machine, player_entity);
-    const std::array<float, 3> light = _view->FindLight({at[0], at[1], at[2]}, least_weapon_light);
+    const std::array<float, 3> light = _view->FindLight({at[0], at[1], at[2]}, least_weapon_light, _lights.FindLight(at));
     if (!_models->Show(*_world, *_data, _weapon, model, frame, 0, light)) { return; }
 
     // The weapon is seen from the eyes. A model looks along x, and the
@@ -1441,6 +1508,7 @@ namespace quake
     _shown.clear();
     // what the bolts showed goes with the level
     _beams.clear();
+    _lights.Forget();
     _models->Clear();
     _sprites->Clear();
     _particle_view.Clear();
@@ -1638,7 +1706,7 @@ namespace quake
       // One that is named by an entity that never set it as its model is
       // not seen for now: the bars of a gate that is open. It is kept out
       // of sight, for the game code may set it later.
-      if (!is_named[part]) { world.DestroyEntity(shown); }
+      if (!is_named[part]) { view.RemovePart(world, part); }
       else if (!is_set[part] && !_static_parts.contains(part))
       {
         world.SetVector3(shown, _position_field, {0.0f, -10000.0f, 0.0f});
@@ -1724,8 +1792,11 @@ namespace quake
     ShowWeapon();
     UpdateBeams();
 
-    // the lights of the level flicker and are switched with its time
+    // the lights of the level flicker and are switched with its time, its
+    // textures change, and what flashes lights what is near
     _view->UpdateLight(world, _level->running.GetTime());
+    _view->UpdateTextures(world, _level->running.GetTime());
+    ShowLights();
     for (std::int32_t entity = 1; entity < _level->machine.GetEntityCount(); entity++) { Show(entity); }
     _sounds->Update(world);
     SayFailures();

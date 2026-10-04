@@ -30,6 +30,11 @@ namespace quake
     /// with `{`.
     static constexpr std::uint8_t see_through = 255;
 
+    /// The first of the colours that glow: from here to the end of the
+    /// palette a colour is shown as it is, however dark its place, in a
+    /// texture of a wall and in the skin of a model.
+    static constexpr std::uint8_t first_glowing = 224;
+
     /// Takes the colours from the bytes of the file. Returns false, and
     /// stays as it was, when there are not exactly 768.
     bool Read(std::span<const std::uint8_t> bytes);
@@ -41,6 +46,13 @@ namespace quake
     /// bytes for each. With `holes`, pixels of the colour `see_through` are
     /// not solid at all, and black; without, every pixel is solid.
     [[nodiscard]] std::vector<std::uint8_t> ToRgba(std::span<const std::uint8_t> pixels, bool holes = false) const;
+
+    /// The pixels of a picture that glow, as ToRgba() gives them, and every
+    /// other pixel black and not solid at all: what is laid over the picture
+    /// once it has its light. With `holes`, pixels of the colour
+    /// `see_through` do not glow. Empty for a picture without a pixel that
+    /// glows.
+    [[nodiscard]] std::vector<std::uint8_t> ToGlowRgba(std::span<const std::uint8_t> pixels, bool holes = false) const;
   };
 } // quake
 

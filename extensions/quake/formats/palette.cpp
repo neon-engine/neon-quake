@@ -36,4 +36,28 @@ namespace quake
     }
     return rgba;
   }
+
+  std::vector<std::uint8_t> Palette::ToGlowRgba(const std::span<const std::uint8_t> pixels, const bool holes) const
+  {
+    const auto glows = [holes](const std::uint8_t pixel)
+    {
+      return pixel >= first_glowing && !(holes && pixel == see_through);
+    };
+    if (std::ranges::none_of(pixels, glows)) { return {}; }
+
+    std::vector<std::uint8_t> rgba;
+    rgba.reserve(pixels.size() * 4);
+    for (const std::uint8_t pixel : pixels)
+    {
+      if (!glows(pixel))
+      {
+        rgba.insert(rgba.end(), {0, 0, 0, 0});
+        continue;
+      }
+
+      const auto colour = GetColour(pixel);
+      rgba.insert(rgba.end(), {colour[0], colour[1], colour[2], 255});
+    }
+    return rgba;
+  }
 } // quake

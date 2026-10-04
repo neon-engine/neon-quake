@@ -55,6 +55,29 @@ namespace quake
           data.GetPalette().ToRgba(source.pictures[0]));
       }
       model->skins.push_back(std::move(path));
+
+      // the last colours of the palette glow: the eyes of a monster, a flame
+      std::string glow;
+      if (!source.pictures.empty())
+      {
+        const std::vector<std::uint8_t> pixels = data.GetPalette().ToGlowRgba(source.pictures[0]);
+        if (!pixels.empty())
+        {
+          glow = world.SetImage(
+            name + "/glow-" + std::to_string(skin),
+            static_cast<std::uint32_t>(header.skin_width),
+            static_cast<std::uint32_t>(header.skin_height),
+            pixels);
+        }
+      }
+      if (glow.empty())
+      {
+        // An entity may show one model after another, so a skin without a
+        // glow takes away the glow of the one before.
+        if (_no_glow.empty()) { _no_glow = world.SetImage("models/no-glow", 1, 1, {0, 0, 0, 0}); }
+        glow = _no_glow;
+      }
+      model->glows.push_back(std::move(glow));
     }
 
     kept = std::move(model);
@@ -174,6 +197,7 @@ namespace quake
       if (!model->skins.empty() && !model->skins[wanted.skin].empty())
       {
         world.SetTexts(entity, world.FindField("Renderable", "textures"), {model->skins[wanted.skin]});
+        world.SetText(entity, world.FindField("Renderable", "material.emissive_texture"), model->glows[wanted.skin]);
       }
     }
 

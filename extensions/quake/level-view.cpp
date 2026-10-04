@@ -12,6 +12,7 @@
 #include "formats/bsp-mesh.hpp"
 #include "formats/lightmap-atlas.hpp"
 #include "formats/quake-space.hpp"
+#include "formats/texture-animation.hpp"
 
 namespace quake
 {
@@ -147,7 +148,7 @@ namespace quake
     _player_placed = true;
   }
 
-  const std::string &LevelView::FindPicture(
+  const LevelView::Pictures &LevelView::FindPicture(
     const World &world,
     const GameData &data,
     const BspFile &level,
@@ -160,7 +161,7 @@ namespace quake
       if (const auto known = _item_pictures.find({item, texture}); known != _item_pictures.end()) { return known->second; }
     } else if (const auto known = _pictures.find(texture); known != _pictures.end()) { return known->second; }
 
-    std::string path;
+    Pictures made;
     if (texture >= 0 && static_cast<std::size_t>(texture) < level.textures.size() && level.textures[texture].has_value())
     {
       const MipTexture &source = *level.textures[texture];
@@ -168,10 +169,19 @@ namespace quake
       // an item carries textures of its own, which may be named as those
       // of the level are
       const std::string name = is_item ? item + "/textures/" + source.name : "textures/" + source.name;
-      path = world.SetImage(name, source.width, source.height, pixels);
+      made.path = world.SetImage(name, source.width, source.height, pixels);
+
+      // The last colours of the palette glow in the dark: a lamp, a screen,
+      // the lava in a crack. A liquid and the sky are shown as they are
+      // anyway.
+      if (!made.path.empty() && !source.IsLiquid() && !source.IsSky())
+      {
+        const std::vector<std::uint8_t> glow = data.GetPalette().ToGlowRgba(source.pixels[0], source.HasHoles());
+        if (!glow.empty()) { made.glow = world.SetImage(name + "/glow", source.width, source.height, glow); }
+      }
     }
-    if (is_item) { return _item_pictures.emplace(std::pair(item, texture), std::move(path)).first->second; }
-    return _pictures.emplace(texture, std::move(path)).first->second;
+    if (is_item) { return _item_pictures.emplace(std::pair(item, texture), std::move(made)).first->second; }
+    return _pictures.emplace(texture, std::move(made)).first->second;
   }
 
   bool LevelView::ShowModel(
@@ -196,6 +206,7 @@ namespace quake
     const NeonField collider_shape_field = world.FindField("Collider", "shape");
     const NeonField lightmap_field = world.FindField("Renderable", "material.lightmap");
     const NeonField strength_field = world.FindField("Renderable", "material.lightmap_strength");
+    const NeonField glow_field = world.FindField("Renderable", "material.emissive_texture");
 
     // The light the level carries for this model, packed into pictures. A
     // level without any is shown as its textures are.
@@ -316,9 +327,36 @@ namespace quake
           entity, shader_field,
           group.is_sky ? GameShaders::sky : group.is_liquid ? GameShaders::liquid : GameShaders::surface);
 
-        if (const std::string &picture = FindPicture(world, data, level, item, group.texture); !picture.empty())
+        const Pictures &picture = FindPicture(world, data, level, item, group.texture);
+        if (!picture.path.empty()) { world.SetTexts(entity, textures_field, {picture.path}); }
+        if (!picture.glow.empty()) { world.SetText(entity, glow_field, picture.glow); }
+
+        // A texture that changes: the pictures of its run, and of its
+        // second run. When any of them glows, each has a glow, so that one
+        // that does not takes away the glow of the one before.
+        if (const TextureAnimation run = TextureAnimation::Find(level.textures, group.texture); !is_item && run.Changes())
         {
-          world.SetTexts(entity, textures_field, {picture});
+          ChangingTexture changing;
+          changing.entity = entity;
+          changing.model = model;
+          for (const std::int32_t frame : run.frames)
+          {
+            changing.frames.push_back(FindPicture(world, data, level, item, frame));
+          }
+          for (const std::int32_t frame : run.alternate)
+          {
+            changing.alternate.push_back(FindPicture(world, data, level, item, frame));
+          }
+
+          const auto glows = [](const Pictures &pictures) { return !pictures.glow.empty(); };
+          changing.glows = std::ranges::any_of(changing.frames, glows) || std::ranges::any_of(changing.alternate, glows);
+          if (changing.glows)
+          {
+            if (_no_glow.empty()) { _no_glow = world.SetImage("textures/no-glow", 1, 1, {0, 0, 0, 0}); }
+            for (Pictures &pictures : changing.frames) { if (pictures.glow.empty()) { pictures.glow = _no_glow; } }
+            for (Pictures &pictures : changing.alternate) { if (pictures.glow.empty()) { pictures.glow = _no_glow; } }
+          }
+          _changing_textures.push_back(std::move(changing));
         }
 
         // A liquid is seen through as much as the level says: its colour is
@@ -394,12 +432,14 @@ namespace quake
     _has_lit = false;
     _has_light = false;
     _changing_lights.clear();
+    _changing_textures.clear();
+    _part_frames.clear();
     _styles = LightStyles();
     _has_style_values = false;
     _fog_density = 0.0f;
   }
 
-  std::array<float, 3> LevelView::FindLight(const BspVector &place, const float least) const
+  std::array<float, 3> LevelView::FindLight(const BspVector &place, const float least, const float more) const
   {
     if (!_has_light) { return {1.0f, 1.0f, 1.0f}; }
 
@@ -418,7 +458,7 @@ namespace quake
     const float samples[3] = {sample.red, sample.green, sample.blue};
     for (std::size_t i = 0; i < 3; i++)
     {
-      const float on_screen = std::clamp(std::max(samples[i], least), 0.0f, 255.0f) / 100.0f;
+      const float on_screen = std::clamp(std::max(samples[i], least) + more, 0.0f, 255.0f) / 100.0f;
       light[i] = std::pow(on_screen, 2.2f) * model_contrast;
     }
     return light;
@@ -500,6 +540,42 @@ namespace quake
         world.SetImage(light.names[page], pixels.width, pixels.height, pixels.pixels);
       }
     }
+  }
+
+  void LevelView::SetPartFrame(const std::size_t model, const std::int32_t frame)
+  {
+    _part_frames[model] = frame;
+  }
+
+  void LevelView::UpdateTextures(const World &world, const double time)
+  {
+    if (_changing_textures.empty()) { return; }
+
+    const NeonField textures_field = world.FindField("Renderable", "textures");
+    const NeonField glow_field = world.FindField("Renderable", "material.emissive_texture");
+    for (ChangingTexture &changing : _changing_textures)
+    {
+      const auto frame = _part_frames.find(changing.model);
+      const bool shows_alternate = !changing.alternate.empty() && frame != _part_frames.end() && frame->second != 0;
+      const std::vector<Pictures> &run = shows_alternate ? changing.alternate : changing.frames;
+      const std::size_t index = TextureAnimation::ChooseFrame(run.size(), time);
+      if (run.empty() || (index == changing.shown && shows_alternate == changing.shows_alternate)) { continue; }
+
+      changing.shown = index;
+      changing.shows_alternate = shows_alternate;
+      if (!run[index].path.empty()) { world.SetTexts(changing.entity, textures_field, {run[index].path}); }
+      if (changing.glows) { world.SetText(changing.entity, glow_field, run[index].glow); }
+    }
+  }
+
+  void LevelView::RemovePart(const World &world, const std::size_t model)
+  {
+    const auto part = _parts.find(model);
+    if (part == _parts.end()) { return; }
+
+    world.DestroyEntity(part->second);
+    _parts.erase(part);
+    std::erase_if(_changing_textures, [model](const ChangingTexture &changing) { return changing.model == model; });
   }
 
   float LevelView::GetFogDensity() const

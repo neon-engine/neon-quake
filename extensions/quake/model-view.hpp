@@ -56,6 +56,10 @@ namespace quake
       /// renderer did not take.
       std::vector<std::string> skins;
 
+      /// The path of the pixels of each skin that glow, or of a picture in
+      /// which nothing does.
+      std::vector<std::string> glows;
+
       /// The corners of the poses that were shown, in the space of the
       /// engine, by the frame and the pose in it: made once, since a
       /// monster comes back to the same poses over and over.
@@ -89,6 +93,9 @@ namespace quake
 
     // the time Update() was last told, by which a group picks its pose
     double _time = 0.0;
+
+    // the path of a picture in which nothing glows, once it was made
+    std::string _no_glow;
 
     /// How long a pose takes to become the next, in seconds: as long as the
     /// game code shows one.

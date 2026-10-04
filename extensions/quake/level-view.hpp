@@ -63,6 +63,35 @@ namespace quake
     /// its first entity: `fog`, `wateralpha`, and the like.
     void ReadSettings(const BspFile &level);
 
+    /// The pictures of a texture, as paths a material reads them by: the
+    /// texture, and its pixels that glow, which are laid over it once it has
+    /// its light. Either is empty when there is none.
+    struct Pictures
+    {
+      std::string path;
+      std::string glow;
+    };
+
+    /// An entity that shows a texture that changes: the pictures it shows
+    /// in turn, those it shows while the frame of its model is not 0, and
+    /// which it shows now.
+    struct ChangingTexture
+    {
+      neon::extension::Entity entity = 0;
+
+      /// The number of the model of the level it is a part of.
+      std::size_t model = 0;
+
+      std::vector<Pictures> frames;
+      std::vector<Pictures> alternate;
+
+      /// Whether any of them glows, so that each is told its glow.
+      bool glows = false;
+
+      std::size_t shown = SIZE_MAX;
+      bool shows_alternate = false;
+    };
+
     /// The light of a model of the level that changes with time: the atlas,
     /// which composes its pictures anew for other values of the styles, and
     /// the names the renderer knows those pictures by.
@@ -94,11 +123,11 @@ namespace quake
     // of the texture in the level that is shown, so that a picture is made
     // known to the renderer once, however many models show it. It is empty
     // for a texture that has no picture.
-    std::map<std::int32_t, std::string> _pictures;
+    std::map<std::int32_t, Pictures> _pictures;
 
     // The same for the pictures of the small levels that are items, by the
     // name of the file and the number of the texture in it.
-    std::map<std::pair<std::string, std::int32_t>, std::string> _item_pictures;
+    std::map<std::pair<std::string, std::int32_t>, Pictures> _item_pictures;
 
     // The paths of the pictures of the light of such an item, by the name
     // of its file.
@@ -117,15 +146,24 @@ namespace quake
     // are named after
     std::string _map;
 
+    // what shows a texture that changes, and the frame the game code set
+    // for each model of the level, by its number
+    std::vector<ChangingTexture> _changing_textures;
+    std::map<std::size_t, std::int32_t> _part_frames;
+
+    // the path of a picture in which nothing glows, once it was made
+    std::string _no_glow;
+
     /// Finds where a player starts among the entities of a level.
     void FindStart(const neon::extension::World &world, const EntityText &text, const std::string &map);
 
     /// The path of the picture of a texture of a level, which is made
     /// known to the renderer the first time it is asked for. Empty when the
     /// level does not carry the texture or the renderer does not take it.
+    /// With it comes the picture of its pixels that glow, when it has any.
     /// `item` is empty for the level that is shown, and the name of the
     /// file for a small level that is an item.
-    const std::string &FindPicture(
+    const Pictures &FindPicture(
       const neon::extension::World &world,
       const GameData &data,
       const BspFile &level,
@@ -166,7 +204,9 @@ namespace quake
     /// and blue. A model is lit by the floor under it, as in the original,
     /// and takes the colour of its light. `least` is the least light it
     /// has, of 255: what the player holds is never all dark.
-    [[nodiscard]] std::array<float, 3> FindLight(const BspVector &place, float least = 0.0f) const;
+    /// `more` is light on top of that of the level, of 255 as well: that of
+    /// an explosion or a shot nearby.
+    [[nodiscard]] std::array<float, 3> FindLight(const BspVector &place, float least = 0.0f, float more = 0.0f) const;
 
     /// Sets the style of a light, as the game code does with `lightstyle`:
     /// a text of letters from `a` for dark to `z` for twice as bright, ten
@@ -178,6 +218,19 @@ namespace quake
     /// whose style changed are composed anew and handed to the renderer
     /// again. A level whose lights are all steady costs nothing.
     void UpdateLight(const neon::extension::World &world, double time);
+
+    /// Says which frame the game code set for a model of the level, by its
+    /// number: with a frame that is not 0 the model shows the second run of
+    /// its textures that change, as a button that was pressed does.
+    void SetPartFrame(std::size_t model, std::int32_t frame);
+
+    /// Shows the textures that change as they are at a time of the game, in
+    /// seconds. Only what shows another picture than before is told.
+    void UpdateTextures(const neon::extension::World &world, double time);
+
+    /// Takes a model of the level that is shown out of the world for good,
+    /// by its number.
+    void RemovePart(const neon::extension::World &world, std::size_t model);
 
     /// How thick the fog of the level that is shown is, as the level says
     /// it, 0 for none, and its colour as the engine multiplies light.
