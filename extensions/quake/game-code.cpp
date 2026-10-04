@@ -9,7 +9,6 @@
 #include "formats/entity-text.hpp"
 #include "formats/progs.hpp"
 #include "formats/quake-space.hpp"
-#include "game/client-think.hpp"
 #include "game/level-spawning.hpp"
 #include "game/qc-builtin-number.hpp"
 #include "game/qc-flag.hpp"
@@ -79,11 +78,18 @@ namespace quake
       touching(collision, running),
       stepping(collision, touching, [this] { return builtins.NextRandom(); }),
       physics(collision, touching),
-      world_builtins(collision, stepping)
+      world_builtins(collision, stepping),
+      movement(collision)
   {
     // what moves an entity calls the game code through what runs it, so it
     // is made after it and handed over here
     running.SetMover(&physics);
+
+    // The player is moved as the original moves one: steered by what is
+    // pressed, and walked through the level with everything else, at its
+    // turn among the entities.
+    physics.SetWalksClients(true);
+    running.SetClientCount(1);
   }
 
   void GameCode::SetModel(const std::int32_t entity, const std::int32_t name_offset, const std::string_view name)
@@ -428,6 +434,8 @@ namespace quake
     if (_level == nullptr) { return; }
     _world = &world;
 
+    ShowView(blend);
+
     for (Shown &shown : _shown)
     {
       if (shown.entity == 0 || shown.is_part || !shown.is_placed || (shown.is_settled && !shown.spins)) { continue; }
@@ -442,62 +450,15 @@ namespace quake
     }
   }
 
-  void GameCode::ReadPlayer(const float dt)
+  bool GameCode::IsPlayerHeld()
   {
-    if (_player == 0)
-    {
-      _player = _world->FindEntity("player");
-      if (_player == 0) { return; }
-    }
-    // until the player stands where the game code has it, there is nothing
-    // to tell
-    if (!_player_placed) { return; }
+    return _level->fields.movetype.Get(_level->machine, player_entity) != static_cast<float>(QcMoveType::Walk);
+  }
 
+  void GameCode::SteerPlayer(const float dt)
+  {
     QcMachine &machine = _level->machine;
     const QcFields &fields = _level->fields;
-
-    // A player who is dead or looks at a level that is over is the game
-    // code's to move, and is only told what is pressed.
-    const bool is_held = IsPlayerHeld();
-    Vector origin = fields.origin.Get(machine, player_entity);
-    if (!is_held)
-    {
-      const neon::extension::Vector3 position = _world->GetVector3(_player, _position_field);
-      const BspVector place = QuakeSpace::ToGamePosition({position.x, position.y, position.z});
-      origin = {place.x, place.y, place.z - middle_height};
-
-      if (dt > 0.0f)
-      {
-        fields.velocity.Set(machine, player_entity, {
-          (origin[0] - _player_origin[0]) / dt,
-          (origin[1] - _player_origin[1]) / dt,
-          (origin[2] - _player_origin[2]) / dt,
-        });
-      }
-      fields.origin.Set(machine, player_entity, origin);
-      _level->collision.Link(player_entity);
-    }
-
-    // The yaw of the engine is 0 towards the game's north, see QuakeSpace.
-    // The player looks up and down with the camera, which the game counts
-    // the other way around: down is more.
-    const float yaw = wrap_angle(_world->GetVector3(_player, _rotation_field).y + 90.0f);
-    if (_camera == 0) { _camera = _world->FindEntity("player/camera"); }
-    const float pitch = _camera != 0 ? -_world->GetVector3(_camera, _rotation_field).x : 0.0f;
-    if (!is_held)
-    {
-      fields.angles.Set(machine, player_entity, {0.0f, yaw, 0.0f});
-      fields.v_angle.Set(machine, player_entity, {pitch, yaw, 0.0f});
-    }
-
-    // The body of the engine stands on a floor when it neither rises nor
-    // falls, which is what the game code asks before it lets a player jump.
-    if (!is_held)
-    {
-      const float flags = fields.flags.Get(machine, player_entity);
-      const bool is_on_ground = dt > 0.0f && std::abs(origin[2] - _player_origin[2]) / dt < 1.0f;
-      fields.flags.Set(machine, player_entity, is_on_ground ? WithFlag(flags, QcFlag::OnGround) : WithoutFlag(flags, QcFlag::OnGround));
-    }
 
     // what the player holds down, and what was asked for once
     fields.button0.Set(machine, player_entity, _world->IsActionDown("fire") ? 1.0f : 0.0f);
@@ -508,55 +469,106 @@ namespace quake
       _impulse = 0.0f;
     }
 
-    _player_origin = origin;
+    // The game code turned the player: at the start of a level, through a
+    // teleporter, and to look at a level that is over.
+    if (fields.fixangle.Get(machine, player_entity) != 0.0f)
+    {
+      const Vector angles = fields.angles.Get(machine, player_entity);
+      _view_pitch = angles[0];
+      _view_yaw = angles[1];
+      fields.fixangle.Set(machine, player_entity, 0.0f);
+    }
+
+    // The player runs, as in the game as it is played today, and walks
+    // while `run` is held. The game holds the speed down to what a player
+    // may have.
+    const neon::extension::Vector2 move = _world->ActionAxis2("move");
+    const float pace = _world->IsActionDown("run") ? 0.5f : 1.0f;
+    const float up = (_world->IsActionDown("swim-up") ? 1.0f : 0.0f) - (_world->IsActionDown("swim-down") ? 1.0f : 0.0f);
+
+    PlayerCommand command;
+    command.forward_move = move.y * forward_speed * pace;
+    command.side_move = move.x * side_speed * pace;
+    command.up_move = up * up_speed * pace;
+    command.view_angles = {_view_pitch, _view_yaw, 0.0f};
+    _level->movement.Steer(player_entity, command, static_cast<float>(_level->running.GetTime()), dt);
   }
 
-  bool GameCode::IsPlayerHeld()
+  void GameCode::FindEyes(Vector &eyes) const
   {
-    return _level->fields.movetype.Get(_level->machine, player_entity) != static_cast<float>(QcMoveType::Walk);
+    const Vector origin = _level->fields.origin.Get(_level->machine, player_entity);
+    const Vector view = _level->fields.view_ofs.Get(_level->machine, player_entity);
+    eyes = {origin[0] + view[0], origin[1] + view[1], origin[2] + view[2]};
   }
 
-  void GameCode::PlacePlayer()
+  void GameCode::NoteEyes()
   {
-    if (_player == 0) { return; }
+    Vector eyes;
+    FindEyes(eyes);
+
+    // a move too far for a step is a jump to another place, which is not
+    // shown on its way
+    const bool is_far = !_has_eyes || std::abs(eyes[0] - _eyes[0]) > glide_reach ||
+                        std::abs(eyes[1] - _eyes[1]) > glide_reach || std::abs(eyes[2] - _eyes[2]) > glide_reach;
+    _eyes_before = is_far ? eyes : _eyes;
+    _eyes = eyes;
+    if (is_far) { _shown_height = eyes[2]; }
+    _has_eyes = true;
+  }
+
+  void GameCode::ShowView(const float blend)
+  {
+    if (_player == 0)
+    {
+      _player = _world->FindEntity("player");
+      if (_player == 0) { return; }
+      _camera = _world->FindEntity("player/camera");
+    }
+    if (!_has_eyes) { return; }
 
     QcMachine &machine = _level->machine;
     const QcFields &fields = _level->fields;
 
-    // The game code moved the player when it is not where it was said to
-    // be: at the start of a level, and through a teleporter.
-    // The eyes are where the game code has them above the feet: lower for
-    // a player who lies dead. The feet are 24 units below where the game
-    // has the player.
-    if (const float eye_height = 24.0f + fields.view_ofs.Get(machine, player_entity)[2]; eye_height != _eye_height)
+    Vector eyes;
+    for (std::size_t i = 0; i < 3; i++) { eyes[i] = _eyes_before[i] + (_eyes[i] - _eyes_before[i]) * blend; }
+
+    // A step of a stair lifts the player at once. The eyes follow at their
+    // own pace, as in the original, so that stairs are no jolts.
+    const bool is_on_ground = HasFlag(fields.flags.Get(machine, player_entity), QcFlag::OnGround);
+    if (is_on_ground && eyes[2] > _shown_height)
     {
-      _eye_height = eye_height;
-      _world->SetNumber(_player, _world->FindField("Player", "eye_height"), eye_height * QuakeSpace::metres_per_unit);
+      _shown_height = std::clamp(_shown_height + _frame_time * eye_rise_speed, eyes[2] - most_eye_lag, eyes[2]);
+    } else
+    {
+      _shown_height = eyes[2];
     }
+    eyes[2] = _shown_height;
 
-    const Vector origin = fields.origin.Get(machine, player_entity);
-    if (_player_placed && origin == _player_origin && !IsPlayerHeld()) { return; }
-
-    const BspVector place = QuakeSpace::ToEnginePosition({origin[0], origin[1], origin[2] + middle_height});
+    const BspVector place = QuakeSpace::ToEnginePosition({eyes[0], eyes[1], eyes[2]});
     _world->SetVector3(_player, _position_field, {place.x, place.y, place.z});
 
-    // and it says so when the player is to look another way
-    if (!_player_placed || fields.fixangle.Get(machine, player_entity) != 0.0f)
-    {
-      const Vector angles = fields.angles.Get(machine, player_entity);
-      _world->SetVector3(_player, _rotation_field, {0.0f, QuakeSpace::ToEngineYaw(angles[1]), 0.0f});
-      // up and down is the camera's, and counted the other way around
-      if (_camera != 0) { _world->SetVector3(_camera, _rotation_field, {-angles[0], 0.0f, 0.0f}); }
-      fields.fixangle.Set(machine, player_entity, 0.0f);
-    }
-
-    _player_origin = origin;
-    _player_placed = true;
+    // The player turns left and right, and the camera up and down, which
+    // the game counts the other way around: down is more. A shot kicks the
+    // view up for a moment.
+    const Vector punch = fields.punchangle.Get(machine, player_entity);
+    _world->SetVector3(_player, _rotation_field, {0.0f, QuakeSpace::ToEngineYaw(_view_yaw + punch[1]), 0.0f});
+    if (_camera != 0) { _world->SetVector3(_camera, _rotation_field, {-(_view_pitch + punch[0]), 0.0f, 0.0f}); }
   }
 
-  void GameCode::ReadInput(const World &world)
+  void GameCode::ReadInput(const World &world, const float frame_time)
   {
     if (_level == nullptr) { return; }
+    _frame_time = frame_time;
+
+    // The player looks around in every frame that is drawn, not in every
+    // step of the world, so that aiming is as quick as the display. A
+    // player who is dead, or looks at a level that is over, does not.
+    if (!IsPlayerHeld())
+    {
+      const neon::extension::Vector2 look = world.ActionAxis2("look");
+      _view_yaw = wrap_angle(_view_yaw - look.x * look_speed);
+      _view_pitch = std::clamp(_view_pitch + look.y * look_speed, most_pitch_up, most_pitch_down);
+    }
 
     for (int weapon = 1; weapon <= 8; weapon++)
     {
@@ -597,49 +609,6 @@ namespace quake
     // The weapon is seen from the eyes. A model looks along x, and the
     // camera along the negative z, a quarter turn from it.
     if (is_new) { _world->SetVector3(_weapon, _rotation_field, {0.0f, 90.0f, 0.0f}); }
-  }
-
-  void GameCode::TouchAsPlayer()
-  {
-    if (!_player_placed) { return; }
-
-    QcMachine &machine = _level->machine;
-    const QcFields &fields = _level->fields;
-
-    const Vector origin = fields.origin.Get(machine, player_entity);
-    const Vector mins = fields.mins.Get(machine, player_entity);
-    const Vector maxs = fields.maxs.Get(machine, player_entity);
-
-    // those there are now: what a touch makes is not touched in the same step
-    const std::int32_t count = machine.GetEntityCount();
-    for (std::int32_t entity = player_entity + 1; entity < count; entity++)
-    {
-      if (machine.IsEntityFree(entity)) { continue; }
-
-      const auto solid = static_cast<QcSolid>(static_cast<int>(fields.solid.Get(machine, entity)));
-      const std::int32_t touch = fields.touch.Get(machine, entity);
-      if (solid == QcSolid::Not || touch == 0) { continue; }
-
-      // A trigger is touched from inside it. What stops the player is
-      // touched by standing at it, which is a little off it for the body of
-      // the engine.
-      const float reach = solid == QcSolid::Trigger ? 0.0f : touch_reach;
-      const Vector other_origin = fields.origin.Get(machine, entity);
-      const Vector other_mins = fields.mins.Get(machine, entity);
-      const Vector other_maxs = fields.maxs.Get(machine, entity);
-
-      bool is_touching = true;
-      for (std::size_t axis = 0; axis < 3; axis++)
-      {
-        if (origin[axis] + mins[axis] > other_origin[axis] + other_maxs[axis] + reach ||
-            origin[axis] + maxs[axis] < other_origin[axis] + other_mins[axis] - reach)
-        {
-          is_touching = false;
-          break;
-        }
-      }
-      if (is_touching) { _level->running.RunFunction(touch, entity, player_entity); }
-    }
   }
 
   void GameCode::SayFailures()
@@ -691,8 +660,7 @@ namespace quake
     if (_weapon != 0) { _world->DestroyEntity(_weapon); }
     _weapon = 0;
     _impulse = 0.0f;
-    _player_placed = false;
-    _eye_height = 0.0f;
+    _has_eyes = false;
     _failures_said = 0;
     _line.clear();
   }
@@ -750,6 +718,8 @@ namespace quake
     _level = std::move(level);
     _level->builtins.Register(_level->machine);
     _level->world_builtins.Register(_level->machine);
+    _level->movement.SetSettings(PlayerMovementSettings::From(_level->builtins.GetVariables()));
+    _level->physics.SetGravity(_level->builtins.GetVariables().GetFloat("sv_gravity"));
     RegisterBuiltins();
 
     // The models the game code finds announced: the level, which is model 1,
@@ -838,12 +808,11 @@ namespace quake
     _world = &world;
     if (dt > 0.0f) { _step = dt; }
 
-    ReadPlayer(dt);
-
-    _level->running.RunClientThink(player_entity, ClientThink::Before);
+    // The player is steered by what is pressed, and then moved with
+    // everything else of the level: the game code and the collision of the
+    // game move the player, not the physics of the engine.
+    SteerPlayer(dt);
     _level->running.Advance(dt);
-    TouchAsPlayer();
-    _level->running.RunClientThink(player_entity, ClientThink::After);
 
     // a level the game code asked for is gone to once its step is over
     if (!_wanted_map.empty())
@@ -852,7 +821,7 @@ namespace quake
       return;
     }
 
-    PlacePlayer();
+    NoteEyes();
     ShowWeapon();
     for (std::int32_t entity = 1; entity < _level->machine.GetEntityCount(); entity++) { Show(entity); }
     _sounds->Update(world);

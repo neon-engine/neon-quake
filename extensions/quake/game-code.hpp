@@ -19,6 +19,8 @@
 #include "game/level-running.hpp"
 #include "game/level-stepping.hpp"
 #include "game/level-touching.hpp"
+#include "game/player-command.hpp"
+#include "game/player-movement.hpp"
 #include "game/qc-core-builtins.hpp"
 #include "game/qc-fields.hpp"
 #include "game/qc-globals.hpp"
@@ -37,15 +39,19 @@ namespace quake
   /// where it is, and which model it shows, in the fields of its entities.
   /// This reads those fields after every step and makes the world of the
   /// engine agree: a door stands where its `origin` says, a monster shows
-  /// the frame its `frame` says. The other way around it tells the game
-  /// code where the player of the scene is, and what that player touches,
-  /// which is what opens a door and picks an item up.
+  /// the frame its `frame` says.
   ///
   /// What the game code asks that needs the walls of a level, a line traced
   /// through it, a monster that walks, an item that falls, is answered by
   /// the collision of the game itself, `LevelCollision` and what is built
-  /// on it, with the hulls of the level as the original has them. The one
-  /// thing that is not moved so is the player, whose body is the engine's.
+  /// on it, with the hulls of the level as the original has them.
+  ///
+  /// The player is an entity of the game code as every other, and is moved
+  /// as the original moves one: steered by what is pressed, `PlayerMovement`,
+  /// and walked, swum, and dropped through the level by that collision.
+  /// That is what gives the game its pace. The engine is left the eyes: a
+  /// camera that is put where the player looks from, in every frame that
+  /// is drawn.
   class GameCode final : public QcHost
   {
     using Vector = std::array<float, 3>;
@@ -67,6 +73,9 @@ namespace quake
       LevelStepping stepping;
       LevelPhysics physics;
       QcWorldBuiltins world_builtins;
+
+      // what steers the player
+      PlayerMovement movement;
 
       Level(Progs progs, QcHost &host);
     };
@@ -124,9 +133,6 @@ namespace quake
     std::vector<float> _wanted_parms;
     float _server_flags = 0.0f;
 
-    // how high the eyes of the player are above the feet, as last told to
-    // the engine, in units of the game
-    float _eye_height = 0.0f;
 
     // what the game is shown with, which outlive a level
     const neon::extension::World *_world = nullptr;
@@ -138,11 +144,26 @@ namespace quake
     NeonField _position_field{};
     NeonField _rotation_field{};
 
-    // The player of the scene, once it is there, and where the game code
-    // was last told it is.
+    // The entity of the scene the camera stands under, once it is there:
+    // the eyes of the player.
     neon::extension::Entity _player = 0;
-    bool _player_placed = false;
-    Vector _player_origin{};
+
+    // Where the player looks, in degrees as the game counts them: up and
+    // down, where down is more, and around. It is the player's own, turned
+    // in every frame that is drawn, and the game code is told in every step.
+    float _view_pitch = 0.0f;
+    float _view_yaw = 0.0f;
+
+    // Where the eyes of the player were after the step before and after the
+    // last, in the space of the game, between which they are shown; and how
+    // high they are shown, which lags behind the step of a stair.
+    Vector _eyes_before{};
+    Vector _eyes{};
+    float _shown_height = 0.0f;
+    bool _has_eyes = false;
+
+    // how long the frame that is drawn took, in seconds
+    float _frame_time = 0.0f;
 
     // what the game code printed of a line that has not ended yet
     std::string _line;
@@ -163,14 +184,25 @@ namespace quake
     /// world, as in the original.
     static constexpr std::int32_t player_entity = 1;
 
-    /// How far the middle of the body of the player is above where the game
-    /// has the player, see LevelView.
-    static constexpr float middle_height = 4.0f;
+    /// How fast the player asks to go, in units of the game a second:
+    /// forward, sideways, and up or down in water. They are what the
+    /// original asks for with its run key held; the game holds a player
+    /// down to its own speed, 320.
+    static constexpr float forward_speed = 400.0f;
+    static constexpr float side_speed = 350.0f;
+    static constexpr float up_speed = 200.0f;
 
-    /// How far from a wall that is touched the player may stand, in units
-    /// of the game: the body of the engine keeps a little off what it walks
-    /// into.
-    static constexpr float touch_reach = 2.0f;
+    /// Degrees the view turns for what `look` gives, a pixel of the mouse.
+    static constexpr float look_speed = 0.14f;
+
+    /// How far the player looks up and down, as the original has it.
+    static constexpr float most_pitch_up = -70.0f;
+    static constexpr float most_pitch_down = 80.0f;
+
+    /// How fast the eyes follow a step up a stair, in units a second, and
+    /// how far they may lag behind it, as in the original.
+    static constexpr float eye_rise_speed = 80.0f;
+    static constexpr float most_eye_lag = 12.0f;
 
     /// How many steps of the world a stride of a monster is shown over. The
     /// game code moves a monster every tenth of a second.
@@ -215,23 +247,27 @@ namespace quake
     /// shown.
     void Place(const Shown &shown, const Vector &origin, const Vector &angles) const;
 
-    /// Tells the game code where the player of the scene is.
-    void ReadPlayer(float dt);
+    /// Tells the game code what the player holds down and where the player
+    /// looks, and steers the player by it for a step.
+    void SteerPlayer(float dt);
 
-    /// Puts the player of the scene where the game code moved it to, as a
-    /// teleporter does, and at the start of a level.
-    void PlacePlayer();
+    /// Where the eyes of the player are, in the space of the game.
+    void FindEyes(Vector &eyes) const;
+
+    /// Keeps where the eyes are after a step, and where they were before.
+    void NoteEyes();
+
+    /// Puts the camera of the scene where the player looks from, `blend`
+    /// of the way between the last two steps, looking where the player
+    /// looks.
+    void ShowView(float blend);
 
     /// Shows the weapon the game code has in the player's hands, with the
     /// frame it is at, in front of the camera.
     void ShowWeapon();
 
-    /// Calls `touch` of everything the player is in or at.
-    void TouchAsPlayer();
-
-    /// Whether the body of the player is the game code's for now, and not
-    /// the engine's: a player who is dead, or looks at a level that is
-    /// over, is where the game code has it.
+    /// Whether the player is dead, or looks at a level that is over: the
+    /// game code has the player as anything but walking then.
     [[nodiscard]] bool IsPlayerHeld();
 
     /// Takes away everything the game code shows, and the game code of the
@@ -279,10 +315,11 @@ namespace quake
       const std::string &map,
       std::string &error);
 
-    /// Takes what the player pressed in this frame that the game code is
-    /// told of once, in its next step: the number of a weapon, or the wish
-    /// for the next one or the one before.
-    void ReadInput(const neon::extension::World &world);
+    /// Takes what the player did in this frame, once in every frame that
+    /// is drawn: the view is turned by `look`, and the number of a weapon,
+    /// or the wish for the next one or the one before, is kept for the game
+    /// code's next step. `frame_time` is how long the frame took.
+    void ReadInput(const neon::extension::World &world, float frame_time);
 
     /// Shows what moves on its way between two steps of the world, once in
     /// every frame that is drawn: `blend` is how far the frame lies between

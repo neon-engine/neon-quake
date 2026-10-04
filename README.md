@@ -11,7 +11,8 @@ for it. The level has its walls, floors, and ceilings with their textures,
 lit by the light it carries. The game code makes its entities: monsters,
 items, and torches stand where the level puts them, with their models and
 the frames the game code gives them. A player stands where the game code
-puts one and walks the level. Doors open when they are walked up to, lifts
+puts one and is moved as the original moves one, at its pace: running,
+jumping, climbing stairs, and swimming. Doors open when they are walked up to, lifts
 and buttons move, teleporters take the player away, and items are picked up.
 What the game code plays is heard where it sounds: doors, items, monsters,
 the hum of a level. Monsters see the player, walk, and attack, and what
