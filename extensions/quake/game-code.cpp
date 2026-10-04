@@ -12,6 +12,7 @@
 #include "game/client-think.hpp"
 #include "game/level-spawning.hpp"
 #include "game/qc-builtin-number.hpp"
+#include "game/qc-flag.hpp"
 #include "game/qc-move-type.hpp"
 #include "game/qc-solid.hpp"
 
@@ -334,10 +335,29 @@ namespace quake
     fields.origin.Set(machine, player_entity, origin);
     _level->collision.Link(player_entity);
 
-    // the yaw of the engine is 0 towards the game's north, see QuakeSpace
+    // The yaw of the engine is 0 towards the game's north, see QuakeSpace.
+    // The player looks up and down with the camera, which the game counts
+    // the other way around: down is more.
     const float yaw = wrap_angle(_world->GetVector3(_player, _rotation_field).y + 90.0f);
+    if (_camera == 0) { _camera = _world->FindEntity("player/camera"); }
+    const float pitch = _camera != 0 ? -_world->GetVector3(_camera, _rotation_field).x : 0.0f;
     fields.angles.Set(machine, player_entity, {0.0f, yaw, 0.0f});
-    fields.v_angle.Set(machine, player_entity, {0.0f, yaw, 0.0f});
+    fields.v_angle.Set(machine, player_entity, {pitch, yaw, 0.0f});
+
+    // The body of the engine stands on a floor when it neither rises nor
+    // falls, which is what the game code asks before it lets a player jump.
+    const float flags = fields.flags.Get(machine, player_entity);
+    const bool is_on_ground = dt > 0.0f && std::abs(origin[2] - _player_origin[2]) / dt < 1.0f;
+    fields.flags.Set(machine, player_entity, is_on_ground ? WithFlag(flags, QcFlag::OnGround) : WithoutFlag(flags, QcFlag::OnGround));
+
+    // what the player holds down, and what was asked for once
+    fields.button0.Set(machine, player_entity, _world->IsActionDown("fire") ? 1.0f : 0.0f);
+    fields.button2.Set(machine, player_entity, _world->IsActionDown("jump") ? 1.0f : 0.0f);
+    if (_impulse != 0.0f)
+    {
+      fields.impulse.Set(machine, player_entity, _impulse);
+      _impulse = 0.0f;
+    }
 
     _player_origin = origin;
   }
@@ -367,6 +387,50 @@ namespace quake
 
     _player_origin = origin;
     _player_placed = true;
+  }
+
+  void GameCode::ReadInput(const World &world)
+  {
+    if (_level == nullptr) { return; }
+
+    for (int weapon = 1; weapon <= 8; weapon++)
+    {
+      if (world.WasActionPressed("weapon-" + std::to_string(weapon))) { _impulse = static_cast<float>(weapon); }
+    }
+
+    // the game code goes through the weapons the player has, either way
+    if (world.WasActionPressed("weapon-next")) { _impulse = next_weapon_impulse; }
+    if (world.WasActionPressed("weapon-previous")) { _impulse = previous_weapon_impulse; }
+  }
+
+  void GameCode::ShowWeapon()
+  {
+    if (_camera == 0) { return; }
+
+    QcMachine &machine = _level->machine;
+    const QcFields &fields = _level->fields;
+
+    const std::string model(fields.weaponmodel.GetText(machine, player_entity));
+    if (model.empty())
+    {
+      if (_weapon != 0)
+      {
+        _models->Forget(_weapon);
+        _world->DestroyEntity(_weapon);
+        _weapon = 0;
+      }
+      return;
+    }
+
+    const bool is_new = _weapon == 0;
+    if (is_new) { _weapon = _world->CreateEntity("weapon", _camera); }
+
+    const auto frame = static_cast<std::int32_t>(fields.weaponframe.Get(machine, player_entity));
+    if (!_models->Show(*_world, *_data, _weapon, model, frame, 0)) { return; }
+
+    // The weapon is seen from the eyes. A model looks along x, and the
+    // camera along the negative z, a quarter turn from it.
+    if (is_new) { _world->SetVector3(_weapon, _rotation_field, {0.0f, 90.0f, 0.0f}); }
   }
 
   void GameCode::TouchAsPlayer()
@@ -444,6 +508,9 @@ namespace quake
     _level.reset();
     _shown.clear();
     _player = 0;
+    _camera = 0;
+    _weapon = 0;
+    _impulse = 0.0f;
     _player_placed = false;
     _failures_said = 0;
 
@@ -566,6 +633,7 @@ namespace quake
     _level->running.RunClientThink(player_entity, ClientThink::After);
 
     PlacePlayer();
+    ShowWeapon();
     for (std::int32_t entity = 1; entity < _level->machine.GetEntityCount(); entity++) { Show(entity); }
     SayFailures();
   }

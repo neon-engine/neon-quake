@@ -14,14 +14,17 @@ the frames the game code gives them. A player stands where the game code
 puts one and walks the level. Doors open when they are walked up to, lifts
 and buttons move, teleporters take the player away, and items are picked up.
 Monsters see the player, walk, and attack, and what falls comes to lie, all
-colliding with the level as the original does. The player cannot shoot or
-die yet, nothing is heard, and
+colliding with the level as the original does. The player holds a weapon,
+shoots with the left button of the mouse, and chooses a weapon with the
+number keys; what is shot dies. The player does not die yet, nothing is
+heard, and
 the sky, liquids, and lights that flicker are not drawn as such yet.
 
 ## What it is made of
 
 ```
 assets/project.yml          the project: its name, and the scene it starts with
+assets/input/               the input map of the game: what the player does, and the keys for it
 extensions/quake/
   extension.yml             the recipe of the extension
   quake.cpp                 its code: what it brings to the engine

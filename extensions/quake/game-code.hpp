@@ -111,6 +111,15 @@ namespace quake
     // what the game code printed of a line that has not ended yet
     std::string _line;
 
+    // The camera of the player, and the entity under it that shows the
+    // weapon in the player's hands.
+    neon::extension::Entity _camera = 0;
+    neon::extension::Entity _weapon = 0;
+
+    // What the player asked for since the last step: the number of a
+    // weapon, which the game code is handed once.
+    float _impulse = 0.0f;
+
     // how many failures of the game code were said already
     std::size_t _failures_said = 0;
 
@@ -126,6 +135,11 @@ namespace quake
     /// of the game: the body of the engine keeps a little off what it walks
     /// into.
     static constexpr float touch_reach = 2.0f;
+
+    /// What the game code is handed to go to the next weapon the player
+    /// has, and to the one before.
+    static constexpr float next_weapon_impulse = 10.0f;
+    static constexpr float previous_weapon_impulse = 12.0f;
 
     /// Registers the builtins that need the level or the engine.
     void RegisterBuiltins();
@@ -150,6 +164,10 @@ namespace quake
     /// Puts the player of the scene where the game code moved it to, as a
     /// teleporter does, and at the start of a level.
     void PlacePlayer();
+
+    /// Shows the weapon the game code has in the player's hands, with the
+    /// frame it is at, in front of the camera.
+    void ShowWeapon();
 
     /// Calls `touch` of everything the player is in or at.
     void TouchAsPlayer();
@@ -184,6 +202,11 @@ namespace quake
       ModelView &models,
       const std::string &map,
       std::string &error);
+
+    /// Takes what the player pressed in this frame that the game code is
+    /// told of once, in its next step: the number of a weapon, or the wish
+    /// for the next one or the one before.
+    void ReadInput(const neon::extension::World &world);
 
     /// Whether a level runs.
     [[nodiscard]] bool IsRunning() const;

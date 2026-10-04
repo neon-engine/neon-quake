@@ -10,4 +10,4 @@ scenes:
 
 entry_scene: extensions://quake/assets/scenes/start.scene.yml
 
-input: assets://input/default.input.yml
+input: assets://input/quake.input.yml

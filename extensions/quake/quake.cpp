@@ -40,6 +40,8 @@ namespace quake
     {
       if (!_code->IsRunning()) { _level->PlacePlayer(world); }
 
+      _code->ReadInput(world);
+
       _time += delta_time;
       _models->Update(world, _time);
     }
