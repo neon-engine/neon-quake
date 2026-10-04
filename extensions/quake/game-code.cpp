@@ -68,25 +68,21 @@ namespace quake
     }
   }
 
-  GameCode::Level::Level(Progs progs, QcHost &host, LevelMover &mover)
+  GameCode::Level::Level(Progs progs, QcHost &host)
     : machine(std::move(progs)),
       globals(machine.GetProgs()),
       fields(machine.GetProgs()),
       builtins(host),
-      running(machine, &mover)
+      running(machine),
+      collision(machine),
+      touching(collision, running),
+      stepping(collision, touching, [this] { return builtins.NextRandom(); }),
+      physics(collision, touching),
+      world_builtins(collision, stepping)
   {
-  }
-
-  void GameCode::Link(const std::int32_t entity)
-  {
-    QcMachine &machine = _level->machine;
-    const QcFields &fields = _level->fields;
-
-    const Vector origin = fields.origin.Get(machine, entity);
-    const Vector mins = fields.mins.Get(machine, entity);
-    const Vector maxs = fields.maxs.Get(machine, entity);
-    fields.absmin.Set(machine, entity, {origin[0] + mins[0] - 1.0f, origin[1] + mins[1] - 1.0f, origin[2] + mins[2] - 1.0f});
-    fields.absmax.Set(machine, entity, {origin[0] + maxs[0] + 1.0f, origin[1] + maxs[1] + 1.0f, origin[2] + maxs[2] + 1.0f});
+    // what moves an entity calls the game code through what runs it, so it
+    // is made after it and handed over here
+    running.SetMover(&physics);
   }
 
   void GameCode::SetModel(const std::int32_t entity, const std::int32_t name_offset, const std::string_view name)
@@ -114,7 +110,7 @@ namespace quake
     fields.mins.Set(machine, entity, mins);
     fields.maxs.Set(machine, entity, maxs);
     fields.size.Set(machine, entity, {maxs[0] - mins[0], maxs[1] - mins[1], maxs[2] - mins[2]});
-    Link(entity);
+    _level->collision.Link(entity);
   }
 
   void GameCode::MakeStatic(const std::int32_t entity)
@@ -140,7 +136,7 @@ namespace quake
     {
       const std::int32_t entity = machine.GetParameterInteger(0);
       _level->fields.origin.Set(machine, entity, machine.GetParameterVector(1));
-      Link(entity);
+      _level->collision.Link(entity);
     });
 
     set(QcBuiltinNumber::SetSize, [this](QcMachine &machine)
@@ -151,7 +147,7 @@ namespace quake
       _level->fields.mins.Set(machine, entity, mins);
       _level->fields.maxs.Set(machine, entity, maxs);
       _level->fields.size.Set(machine, entity, {maxs[0] - mins[0], maxs[1] - mins[1], maxs[2] - mins[2]});
-      Link(entity);
+      _level->collision.Link(entity);
     });
 
     set(QcBuiltinNumber::SetModel, [this](QcMachine &machine)
@@ -164,86 +160,10 @@ namespace quake
       MakeStatic(machine.GetParameterInteger(0));
     });
 
-    // Turns the entity that runs towards where it wants to look, by as much
-    // as it turns in a step.
-    set(QcBuiltinNumber::ChangeYaw, [this](QcMachine &machine)
-    {
-      const QcFields &fields = _level->fields;
-      const std::int32_t self = _level->globals.self.Get(machine);
-
-      Vector angles = fields.angles.Get(machine, self);
-      const float current = wrap_angle(angles[1]);
-      const float speed = fields.yaw_speed.Get(machine, self);
-
-      float move = fields.ideal_yaw.Get(machine, self) - current;
-      if (move > 180.0f) { move -= 360.0f; } else if (move < -180.0f) { move += 360.0f; }
-      move = std::clamp(move, -speed, speed);
-
-      angles[1] = wrap_angle(current + move);
-      fields.angles.Set(machine, self, angles);
-    });
-
-    // What needs the walls of the level is answered with nothing in the
-    // way, until the level is collided with as the original does.
-
-    // a line through the level reaches its end
-    set(QcBuiltinNumber::TraceLine, [this](QcMachine &machine)
-    {
-      const QcGlobals &globals = _level->globals;
-      globals.trace_allsolid.Set(machine, 0.0f);
-      globals.trace_startsolid.Set(machine, 0.0f);
-      globals.trace_fraction.Set(machine, 1.0f);
-      globals.trace_inopen.Set(machine, 1.0f);
-      globals.trace_inwater.Set(machine, 0.0f);
-      globals.trace_endpos.Set(machine, machine.GetParameterVector(1));
-      globals.trace_plane_normal.Set(machine, {0.0f, 0.0f, 0.0f});
-      globals.trace_plane_dist.Set(machine, 0.0f);
-      globals.trace_ent.Set(machine, 0);
-    });
-
-    // An item or a monster is on the floor where the level put it. Saying
-    // no has the game code remove it as fallen out of the level.
-    set(QcBuiltinNumber::DropToFloor, [](QcMachine &machine) { machine.SetReturnFloat(1.0f); });
-
-    // Nothing walks yet. A step of no length is how the game code asks
-    // whether a monster stands in a wall, and it does not.
-    set(QcBuiltinNumber::WalkMove, [](QcMachine &machine)
-    {
-      machine.SetReturnFloat(machine.GetParameterFloat(1) == 0.0f ? 1.0f : 0.0f);
-    });
-    set(QcBuiltinNumber::MoveToGoal, [](QcMachine &machine) {});
-    set(QcBuiltinNumber::CheckBottom, [](QcMachine &machine) { machine.SetReturnFloat(1.0f); });
-
-    // every place is in the open: -1 is what the game code has for empty
-    set(QcBuiltinNumber::PointContents, [](QcMachine &machine) { machine.SetReturnFloat(-1.0f); });
-
-    // a shot goes where the player looks
-    set(QcBuiltinNumber::Aim, [this](QcMachine &machine)
-    {
-      machine.SetReturnVector(_level->globals.v_forward.Get(machine));
-    });
-
-    // no monster sees the player yet, and nothing is near anything
-    set(QcBuiltinNumber::CheckClient, [](QcMachine &machine) { machine.SetReturnInteger(0); });
-    set(QcBuiltinNumber::FindRadius, [](QcMachine &machine) { machine.SetReturnInteger(0); });
-
     // nothing is heard yet, and no sparks fly
     set(QcBuiltinNumber::Sound, [](QcMachine &machine) {});
     set(QcBuiltinNumber::AmbientSound, [](QcMachine &machine) {});
     set(QcBuiltinNumber::Particle, [](QcMachine &machine) {});
-  }
-
-  bool GameCode::MovePusher(const std::int32_t entity, const Vector &origin, const Vector &angles, const float dt)
-  {
-    // Nothing holds a door back yet: what moves in the engine pushes what
-    // is in its way. The box of where it is goes with it.
-    QcMachine &machine = _level->machine;
-    const QcFields &fields = _level->fields;
-    const Vector mins = fields.mins.Get(machine, entity);
-    const Vector maxs = fields.maxs.Get(machine, entity);
-    fields.absmin.Set(machine, entity, {origin[0] + mins[0] - 1.0f, origin[1] + mins[1] - 1.0f, origin[2] + mins[2] - 1.0f});
-    fields.absmax.Set(machine, entity, {origin[0] + maxs[0] + 1.0f, origin[1] + maxs[1] + 1.0f, origin[2] + maxs[2] + 1.0f});
-    return true;
   }
 
   void GameCode::PrintToAll(const std::string_view text)
@@ -412,7 +332,7 @@ namespace quake
       });
     }
     fields.origin.Set(machine, player_entity, origin);
-    Link(player_entity);
+    _level->collision.Link(player_entity);
 
     // the yaw of the engine is 0 towards the game's north, see QuakeSpace
     const float yaw = wrap_angle(_world->GetVector3(_player, _rotation_field).y + 90.0f);
@@ -541,7 +461,7 @@ namespace quake
       return false;
     }
 
-    auto level = std::make_unique<Level>(std::move(progs), *this, *this);
+    auto level = std::make_unique<Level>(std::move(progs), *this);
     if (std::string problem; !level->file.Read(data.Find(map), problem))
     {
       error = map + " cannot be read: " + problem;
@@ -555,6 +475,12 @@ namespace quake
       return false;
     }
 
+    if (std::string problem; !level->collision.Build(level->file, problem))
+    {
+      error = "the walls of " + map + " cannot be collided with: " + problem;
+      return false;
+    }
+
     if (!level->globals.HasEssentials())
     {
       error = "progs.dat is not the game code of this game";
@@ -563,6 +489,7 @@ namespace quake
 
     _level = std::move(level);
     _level->builtins.Register(_level->machine);
+    _level->world_builtins.Register(_level->machine);
     RegisterBuiltins();
 
     // The models the game code finds announced: the level, which is model 1,

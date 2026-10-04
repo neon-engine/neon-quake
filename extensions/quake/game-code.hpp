@@ -14,12 +14,16 @@
 #include "formats/bsp-file.hpp"
 #include "formats/qc-machine.hpp"
 #include "game-data.hpp"
-#include "game/level-mover.hpp"
+#include "game/level-collision.hpp"
+#include "game/level-physics.hpp"
 #include "game/level-running.hpp"
+#include "game/level-stepping.hpp"
+#include "game/level-touching.hpp"
 #include "game/qc-core-builtins.hpp"
 #include "game/qc-fields.hpp"
 #include "game/qc-globals.hpp"
 #include "game/qc-host.hpp"
+#include "game/qc-world-builtins.hpp"
 #include "level-view.hpp"
 #include "model-view.hpp"
 
@@ -37,9 +41,11 @@ namespace quake
   /// which is what opens a door and picks an item up.
   ///
   /// What the game code asks that needs the walls of a level, a line traced
-  /// through it, a monster that walks, is answered with as little as lets
-  /// the code run until that is brought: a line hits nothing, nothing walks.
-  class GameCode final : public QcHost, public LevelMover
+  /// through it, a monster that walks, an item that falls, is answered by
+  /// the collision of the game itself, `LevelCollision` and what is built
+  /// on it, with the hulls of the level as the original has them. The one
+  /// thing that is not moved so is the player, whose body is the engine's.
+  class GameCode final : public QcHost
   {
     using Vector = std::array<float, 3>;
 
@@ -54,7 +60,14 @@ namespace quake
       QcCoreBuiltins builtins;
       LevelRunning running;
 
-      Level(Progs progs, QcHost &host, LevelMover &mover);
+      // what the entities collide with, and what moves them through it
+      LevelCollision collision;
+      LevelTouching touching;
+      LevelStepping stepping;
+      LevelPhysics physics;
+      QcWorldBuiltins world_builtins;
+
+      Level(Progs progs, QcHost &host);
     };
 
     /// What the engine shows for an entity of the game code.
@@ -117,10 +130,6 @@ namespace quake
     /// Registers the builtins that need the level or the engine.
     void RegisterBuiltins();
 
-    /// Writes the box of an entity in the level, `absmin` and `absmax`, of
-    /// where it is and its size, as the original does when it links one.
-    void Link(std::int32_t entity);
-
     /// What `setmodel` does: the entity names a model and takes the size of
     /// one of the level.
     void SetModel(std::int32_t entity, std::int32_t name_offset, std::string_view name);
@@ -149,9 +158,6 @@ namespace quake
     void SayFailures();
 
   public:
-    // LevelMover
-    bool MovePusher(std::int32_t entity, const Vector &origin, const Vector &angles, float dt) override;
-
     // QcHost
     void PrintToAll(std::string_view text) override;
 

@@ -13,7 +13,9 @@ items, and torches stand where the level puts them, with their models and
 the frames the game code gives them. A player stands where the game code
 puts one and walks the level. Doors open when they are walked up to, lifts
 and buttons move, teleporters take the player away, and items are picked up.
-Monsters do not see the player or walk yet, nothing is shot or heard, and
+Monsters see the player, walk, and attack, and what falls comes to lie, all
+colliding with the level as the original does. The player cannot shoot or
+die yet, nothing is heard, and
 the sky, liquids, and lights that flicker are not drawn as such yet.
 
 ## What it is made of
