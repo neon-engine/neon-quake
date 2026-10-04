@@ -127,8 +127,23 @@ namespace quake
     // what it shows is shown now, and no longer kept track of, so that it
     // stays when the entity goes
     Show(entity);
-    if (static_cast<std::size_t>(entity) < _shown.size()) { _shown[entity] = {}; }
+    if (static_cast<std::size_t>(entity) < _shown.size())
+    {
+      // a model of the level that stays, as a sign on a wall, is not one
+      // that was left out
+      const std::size_t part = _shown[entity].is_part ? read_part_number(_shown[entity].model) : 0;
+      if (part > 0) { _static_parts.insert(part); }
+      _shown[entity] = {};
+    }
     _level->builtins.RemoveEntity(_level->machine, entity);
+  }
+
+  std::string GameCode::MakeName(const std::int32_t entity)
+  {
+    // An entity of the engine is known by its name. The game code gives the
+    // number of an entity that went to the next one it makes, while what the
+    // first showed may stay, as a torch does: so a name is never used twice.
+    return "entity " + std::to_string(entity) + " " + std::to_string(++_made);
   }
 
   void GameCode::RegisterBuiltins()
@@ -316,11 +331,11 @@ namespace quake
         shown.is_part = true;
       } else if (model.ends_with(".mdl"))
       {
-        shown.entity = _world->CreateEntity("entity " + std::to_string(entity), _root);
+        shown.entity = _world->CreateEntity(MakeName(entity), _root);
         shown.is_alias = true;
       } else if (model.ends_with(".bsp"))
       {
-        shown.entity = _world->CreateEntity("entity " + std::to_string(entity), _root);
+        shown.entity = _world->CreateEntity(MakeName(entity), _root);
         _world->AddComponent(shown.entity, "Transform");
         _view->ShowItem(*_world, *_data, shown.model, shown.entity);
       }
@@ -655,6 +670,7 @@ namespace quake
     _level.reset();
     _shown.clear();
     _models->Clear();
+    _static_parts.clear();
     _sounds->Clear(*_world);
     if (_root != 0) { _world->DestroyEntity(_root); }
     _root = 0;
@@ -759,6 +775,10 @@ namespace quake
     // A model of the level no entity of the game code names is one that was
     // left out, for the skill that is played, and is not there.
     std::vector<bool> is_named(_level->file.models.size(), false);
+    for (const std::size_t part : _static_parts)
+    {
+      if (part < is_named.size()) { is_named[part] = true; }
+    }
     for (std::int32_t entity = 1; entity < _level->machine.GetEntityCount(); entity++)
     {
       if (_level->machine.IsEntityFree(entity)) { continue; }

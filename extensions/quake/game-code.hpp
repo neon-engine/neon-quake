@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -116,6 +117,13 @@ namespace quake
 
     std::unique_ptr<Level> _level;
     std::vector<Shown> _shown;
+
+    // the models of the level that an entity which went left behind for good
+    std::set<std::size_t> _static_parts;
+
+    // how many entities were made to show one of the game code, which
+    // numbers their names
+    std::uint64_t _made = 0;
 
     // the entity everything the game code shows stands under, so that it
     // goes with the level
@@ -231,6 +239,10 @@ namespace quake
     /// What `makestatic` does: what the entity shows stays for the rest of
     /// the level, and the entity itself goes.
     void MakeStatic(std::int32_t entity);
+
+    /// A name for the entity of the engine that shows an entity of the game
+    /// code, which no other has or had.
+    std::string MakeName(std::int32_t entity);
 
     /// Takes away what the engine shows for an entity.
     void Hide(Shown &shown);

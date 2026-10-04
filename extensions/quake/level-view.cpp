@@ -24,8 +24,10 @@ namespace quake
     // light, so that a sample of 128 shows a texture as it is and one of
     // 255 twice as bright, and it does so with the numbers a screen is
     // given. The engine multiplies light itself, where twice as much on a
-    // screen is two to the power of 2.2 as much.
-    constexpr double light_strength = 4.59;
+    // screen is two to the power of 2.2 as much: 4.59. On top of that the
+    // ports of today show the game with more contrast than the original,
+    // 1.4 times on the screen in vkQuake, which is 2.1 times as much light.
+    constexpr double light_strength = 4.59 * 2.1;
 
     // How far the middle of the body of a player is above where the level
     // puts it. A level names the place of a box that reaches 24 units down
