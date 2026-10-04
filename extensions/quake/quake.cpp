@@ -47,6 +47,11 @@ namespace quake
       _models->Update(world, _time);
     }
 
+    void Interpolate(neon::extension::World &world, const double blend) override
+    {
+      _code->Interpolate(world, static_cast<float>(blend));
+    }
+
     void FixedUpdate(neon::extension::World &world, const double fixed_delta_time) override
     {
       _code->Advance(world, static_cast<float>(fixed_delta_time));

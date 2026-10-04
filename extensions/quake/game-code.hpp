@@ -89,6 +89,20 @@ namespace quake
       Vector origin{};
       Vector angles{};
       bool is_placed = false;
+
+      /// Where it was shown when the game code last moved it, and how many
+      /// steps ago that was. Until `glide_steps` have passed it is shown on
+      /// its way from there to where it is, see Interpolate().
+      Vector from_origin{};
+      Vector from_angles{};
+      int steps_since = 0;
+      int glide_steps = 1;
+
+      /// Whether it is shown where it is, and nothing is left to glide.
+      bool is_settled = true;
+
+      /// Whether it turns where it lies, as a weapon to pick up does.
+      bool spins = false;
     };
 
     std::unique_ptr<Level> _level;
@@ -158,6 +172,18 @@ namespace quake
     /// into.
     static constexpr float touch_reach = 2.0f;
 
+    /// How many steps of the world a stride of a monster is shown over. The
+    /// game code moves a monster every tenth of a second.
+    static constexpr double stride_time = 0.1;
+
+    /// How far, in units of the game, something may move in a step and
+    /// still be shown on its way: further is a jump to another place, as
+    /// through a teleporter.
+    static constexpr float glide_reach = 128.0f;
+
+    // how long a step of the world is, as last told, in seconds
+    float _step = 1.0f / 60.0f;
+
     /// What the game code is handed to go to the next weapon the player
     /// has, and to the one before.
     static constexpr float next_weapon_impulse = 10.0f;
@@ -179,6 +205,15 @@ namespace quake
 
     /// Makes what the engine shows for an entity agree with its fields.
     void Show(std::int32_t entity);
+
+    /// Where an entity is shown at a moment between two steps, `blend` of
+    /// the way from the last to the next: on its way from where it was to
+    /// where the game code has it.
+    void FindShownPlace(const Shown &shown, float blend, Vector &origin, Vector &angles) const;
+
+    /// Puts the entity of the engine where an entity of the game code is
+    /// shown.
+    void Place(const Shown &shown, const Vector &origin, const Vector &angles) const;
 
     /// Tells the game code where the player of the scene is.
     void ReadPlayer(float dt);
@@ -248,6 +283,14 @@ namespace quake
     /// told of once, in its next step: the number of a weapon, or the wish
     /// for the next one or the one before.
     void ReadInput(const neon::extension::World &world);
+
+    /// Shows what moves on its way between two steps of the world, once in
+    /// every frame that is drawn: `blend` is how far the frame lies between
+    /// the last step and the next. It is what keeps the game fluid however
+    /// many frames are drawn in a second. A monster walks in ten strides a
+    /// second, as the game code moves it, and is shown gliding from one to
+    /// the next.
+    void Interpolate(const neon::extension::World &world, float blend);
 
     /// Whether a level runs.
     [[nodiscard]] bool IsRunning() const;

@@ -336,27 +336,110 @@ namespace quake
     }
 
     const Vector origin = fields.origin.Get(machine, entity);
-    Vector angles = fields.angles.Get(machine, entity);
-    if (shown.is_alias && (_models->GetFlags(shown.entity) & turns_flag) != 0)
+    const Vector angles = fields.angles.Get(machine, entity);
+    shown.spins = shown.is_alias && (_models->GetFlags(shown.entity) & turns_flag) != 0;
+
+    // A model of the level is a body of the engine, which is put where it is
+    // in every step and does not turn in the original game.
+    if (shown.is_part)
     {
-      angles = {0.0f, wrap_angle(static_cast<float>(_level->running.GetTime() * turn_speed)), 0.0f};
+      if (!shown.is_placed || origin != shown.origin) { Place(shown, origin, angles); }
+      shown.origin = origin;
+      shown.angles = angles;
+      shown.is_placed = true;
+      return;
     }
 
-    if (!shown.is_placed || origin != shown.origin)
+    const bool is_far = std::abs(origin[0] - shown.origin[0]) > glide_reach ||
+                        std::abs(origin[1] - shown.origin[1]) > glide_reach ||
+                        std::abs(origin[2] - shown.origin[2]) > glide_reach;
+    if (!shown.is_placed || is_far)
     {
-      const BspVector place = QuakeSpace::ToEnginePosition({origin[0], origin[1], origin[2]});
-      _world->SetVector3(shown.entity, _position_field, {place.x, place.y, place.z});
+      // it is there at once
+      shown.origin = origin;
+      shown.angles = angles;
+      shown.is_settled = true;
+      shown.is_placed = true;
+      Place(shown, origin, angles);
+      return;
     }
-    // A model of the level does not turn in the original game. The angles of
-    // the game are pitch, yaw, and roll: around what points left, up, and
-    // forward, which the engine has as its z, y, and x.
-    if (!shown.is_part && (!shown.is_placed || angles != shown.angles))
+
+    if (origin != shown.origin || angles != shown.angles)
     {
-      _world->SetVector3(shown.entity, _rotation_field, {angles[2], angles[1], angles[0]});
+      // from where it is shown now, which may be on its way already
+      Vector from_origin;
+      Vector from_angles;
+      FindShownPlace(shown, 1.0f, from_origin, from_angles);
+      shown.from_origin = from_origin;
+      shown.from_angles = from_angles;
+      shown.origin = origin;
+      shown.angles = angles;
+      shown.steps_since = 0;
+      shown.is_settled = false;
+
+      // what walks is moved a stride at a time, and glides over all of it
+      const bool walks = fields.movetype.Get(machine, entity) == static_cast<float>(QcMoveType::Step);
+      shown.glide_steps = walks ? std::max(1, static_cast<int>(std::lround(stride_time / _step))) : 1;
+    } else if (!shown.is_settled)
+    {
+      shown.steps_since++;
     }
-    shown.origin = origin;
-    shown.angles = angles;
-    shown.is_placed = true;
+  }
+
+  void GameCode::FindShownPlace(const Shown &shown, const float blend, Vector &origin, Vector &angles) const
+  {
+    origin = shown.origin;
+    angles = shown.angles;
+
+    if (!shown.is_settled)
+    {
+      const float done = std::clamp(
+        (static_cast<float>(shown.steps_since) + blend) / static_cast<float>(shown.glide_steps), 0.0f, 1.0f);
+      for (std::size_t i = 0; i < 3; i++)
+      {
+        origin[i] = shown.from_origin[i] + (shown.origin[i] - shown.from_origin[i]) * done;
+
+        // an angle goes the short way round
+        float turn = std::fmod(shown.angles[i] - shown.from_angles[i], 360.0f);
+        if (turn > 180.0f) { turn -= 360.0f; } else if (turn < -180.0f) { turn += 360.0f; }
+        angles[i] = shown.from_angles[i] + turn * done;
+      }
+    }
+
+    if (shown.spins)
+    {
+      const double time = _level->running.GetTime() + static_cast<double>(blend * _step);
+      angles = {0.0f, wrap_angle(static_cast<float>(std::fmod(time * turn_speed, 360.0))), 0.0f};
+    }
+  }
+
+  void GameCode::Place(const Shown &shown, const Vector &origin, const Vector &angles) const
+  {
+    const BspVector place = QuakeSpace::ToEnginePosition({origin[0], origin[1], origin[2]});
+    _world->SetVector3(shown.entity, _position_field, {place.x, place.y, place.z});
+
+    // The angles of the game are pitch, yaw, and roll: around what points
+    // left, up, and forward, which the engine has as its z, y, and x.
+    if (!shown.is_part) { _world->SetVector3(shown.entity, _rotation_field, {angles[2], angles[1], angles[0]}); }
+  }
+
+  void GameCode::Interpolate(const World &world, const float blend)
+  {
+    if (_level == nullptr) { return; }
+    _world = &world;
+
+    for (Shown &shown : _shown)
+    {
+      if (shown.entity == 0 || shown.is_part || !shown.is_placed || (shown.is_settled && !shown.spins)) { continue; }
+
+      Vector origin;
+      Vector angles;
+      FindShownPlace(shown, blend, origin, angles);
+      Place(shown, origin, angles);
+
+      // the last of the way is shown, and then it rests
+      if (!shown.is_settled && shown.steps_since >= shown.glide_steps) { shown.is_settled = true; }
+    }
   }
 
   void GameCode::ReadPlayer(const float dt)
@@ -753,6 +836,7 @@ namespace quake
   {
     if (_level == nullptr) { return; }
     _world = &world;
+    if (dt > 0.0f) { _step = dt; }
 
     ReadPlayer(dt);
 

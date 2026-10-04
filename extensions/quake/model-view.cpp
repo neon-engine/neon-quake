@@ -12,7 +12,7 @@ namespace quake
   using neon::extension::Vertex;
   using neon::extension::World;
 
-  const ModelView::Model *ModelView::Find(const World &world, const GameData &data, const std::string &name)
+  ModelView::Model *ModelView::Find(const World &world, const GameData &data, const std::string &name)
   {
     if (const auto known = _models.find(name); known != _models.end()) { return known->second.get(); }
 
@@ -74,13 +74,15 @@ namespace quake
     return 0;
   }
 
-  bool ModelView::ShowPose(const World &world, const Entity entity, const Shown &shown)
+  const std::vector<Vertex> *ModelView::FindCorners(Model &model, const std::size_t frame, const std::size_t pose)
   {
-    const MdlPose *pose = shown.model->file.FindPose(shown.frame, shown.pose);
-    if (pose == nullptr) { return false; }
+    if (const auto known = model.poses.find({frame, pose}); known != model.poses.end()) { return &known->second; }
+
+    const MdlPose *source = model.file.FindPose(frame, pose);
+    if (source == nullptr) { return nullptr; }
 
     std::vector<Vertex> corners;
-    for (const MdlMeshVertex &from : shown.model->mesh.MakeVertices(*pose))
+    for (const MdlMeshVertex &from : model.mesh.MakeVertices(*source))
     {
       const BspVector place = QuakeSpace::ToEnginePosition({from.position.x, from.position.y, from.position.z});
       const BspVector normal = QuakeSpace::ToEngineDirection({from.normal.x, from.normal.y, from.normal.z});
@@ -88,9 +90,50 @@ namespace quake
         {place.x, place.y, place.z},
         {normal.x, normal.y, normal.z},
         {from.u, from.v},
-        {shown.light, shown.light, shown.light, 1.0f},
+        {1.0f, 1.0f, 1.0f, 1.0f},
       });
     }
+    if (corners.empty()) { return nullptr; }
+
+    return &model.poses.emplace(std::pair(frame, pose), std::move(corners)).first->second;
+  }
+
+  std::vector<Vertex> ModelView::MakeCorners(Shown &shown) const
+  {
+    const std::vector<Vertex> *to = FindCorners(*shown.model, shown.frame, shown.pose);
+    if (to == nullptr) { return {}; }
+
+    std::vector<Vertex> corners = *to;
+
+    // how far the pose before has become this one
+    const double done = shown.is_blending ? (_time - shown.changed_at) / blend_time : 1.0;
+    if (done >= 1.0 || shown.from.size() != corners.size())
+    {
+      shown.is_blending = false;
+    } else
+    {
+      const auto part = static_cast<float>(done < 0.0 ? 0.0 : done);
+      for (std::size_t i = 0; i < corners.size(); i++)
+      {
+        Vertex &corner = corners[i];
+        const Vertex &from = shown.from[i];
+        corner.position.x = from.position.x + (corner.position.x - from.position.x) * part;
+        corner.position.y = from.position.y + (corner.position.y - from.position.y) * part;
+        corner.position.z = from.position.z + (corner.position.z - from.position.z) * part;
+        // not of length one in between, and near enough for what is unlit
+        corner.normal.x = from.normal.x + (corner.normal.x - from.normal.x) * part;
+        corner.normal.y = from.normal.y + (corner.normal.y - from.normal.y) * part;
+        corner.normal.z = from.normal.z + (corner.normal.z - from.normal.z) * part;
+      }
+    }
+
+    for (Vertex &corner : corners) { corner.color = {shown.light, shown.light, shown.light, 1.0f}; }
+    return corners;
+  }
+
+  bool ModelView::ShowPose(const World &world, const Entity entity, Shown &shown) const
+  {
+    const std::vector<Vertex> corners = MakeCorners(shown);
     if (corners.empty()) { return false; }
 
     return world.SetMesh(entity, corners, shown.model->indices);
@@ -103,9 +146,10 @@ namespace quake
     const std::string &name,
     const std::int32_t frame,
     const std::int32_t skin,
-    const float light)
+    const float light,
+    const bool blend)
   {
-    const Model *model = Find(world, data, name);
+    Model *model = Find(world, data, name);
     if (model == nullptr || model->file.GetFrames().empty()) { return false; }
 
     Shown wanted;
@@ -132,11 +176,30 @@ namespace quake
       }
     }
 
-    const bool same_mesh = !is_new && known->second.model == model && known->second.frame == wanted.frame &&
-                           known->second.pose == wanted.pose && known->second.light == wanted.light;
-    if (!same_mesh && !ShowPose(world, entity, wanted)) { return false; }
+    const bool same_model = !is_new && known->second.model == model;
+    const bool same_pose = same_model && known->second.frame == wanted.frame && known->second.pose == wanted.pose;
+    if (same_pose && known->second.light == wanted.light)
+    {
+      known->second.skin = wanted.skin;
+      return true;
+    }
 
-    _shown[entity] = wanted;
+    if (same_pose)
+    {
+      // only the light changed: the blend that is under way goes on
+      wanted.from = std::move(known->second.from);
+      wanted.changed_at = known->second.changed_at;
+      wanted.is_blending = known->second.is_blending;
+    } else if (same_model && blend)
+    {
+      // from what the entity shows now, which may lie between two poses
+      wanted.from = MakeCorners(known->second);
+      wanted.changed_at = _time;
+      wanted.is_blending = !wanted.from.empty();
+    }
+    if (!ShowPose(world, entity, wanted)) { return false; }
+
+    _shown[entity] = std::move(wanted);
     return true;
   }
 
@@ -162,13 +225,20 @@ namespace quake
 
     for (auto &[entity, shown] : _shown)
     {
-      if (!shown.model->file.GetFrames()[shown.frame].is_group) { continue; }
+      if (shown.model->file.GetFrames()[shown.frame].is_group)
+      {
+        // The poses of a group follow each other closely as they are: a
+        // flame flickers, and does not glide.
+        if (const std::size_t pose = ChoosePose(*shown.model, shown.frame); pose != shown.pose)
+        {
+          shown.pose = pose;
+          shown.is_blending = false;
+          ShowPose(world, entity, shown);
+        }
+        continue;
+      }
 
-      const std::size_t pose = ChoosePose(*shown.model, shown.frame);
-      if (pose == shown.pose) { continue; }
-
-      shown.pose = pose;
-      ShowPose(world, entity, shown);
+      if (shown.is_blending) { ShowPose(world, entity, shown); }
     }
   }
 } // quake
