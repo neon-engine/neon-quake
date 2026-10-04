@@ -39,6 +39,10 @@ namespace quake
     QcFields _fields;
     LevelMover *_mover = nullptr;
 
+    /// How many of the first entities after the world are players that
+    /// have their whole frame here.
+    std::int32_t _client_count = 0;
+
     /// The time of the level, which the global `time` is set from.
     double _time = LevelSpawning::start_time;
 
@@ -65,6 +69,11 @@ namespace quake
     /// when the thought removed it.
     bool AdvanceThinker(std::int32_t entity, float dt);
 
+    /// A frame of a player: what the game code does before a player
+    /// moves, the player's own thought, the move, and what the game code
+    /// does after.
+    void AdvanceClient(std::int32_t entity, float dt);
+
   public:
     /// How many failures are kept. The first ones are, and the rest are
     /// only counted: a think that fails does so in every frame.
@@ -83,6 +92,20 @@ namespace quake
 
     /// For a level that goes on from a saved game.
     void SetTime(double time);
+
+    /// How many players have their whole frame in Advance(): the entities 1
+    /// to this, which the original keeps for its players. For each of them
+    /// that is not free, Advance() runs `PlayerPreThink`, lets the player
+    /// think, has the mover move the player, and runs `PlayerPostThink`,
+    /// all at the player's turn among the entities, as the original does.
+    ///
+    /// None at the start: a host then moves the player itself, and calls
+    /// RunClientThink() around that. A host that sets this does not call
+    /// RunClientThink() any more, and counts only players that are in the
+    /// level, see ConnectClient().
+    void SetClientCount(std::int32_t client_count);
+
+    [[nodiscard]] std::int32_t GetClientCount() const;
 
     /// Lets `dt` seconds pass.
     ///

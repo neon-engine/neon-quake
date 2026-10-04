@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "formats/bsp-contents.hpp"
+#include "level-axes.hpp"
 #include "level-box.hpp"
 #include "level-trace-kind.hpp"
 #include "qc-flag.hpp"
@@ -14,7 +15,8 @@
 
 namespace quake
 {
-  // Helpers of LevelPhysics: a velocity that slides along what it hit.
+  // Helpers of LevelPhysics: a velocity that slides along what it hit, and
+  // the numbers of the original for what a player runs into.
   namespace
   {
     /// How steep what an entity comes down on may be to count as ground:
@@ -25,6 +27,25 @@ namespace quake
     /// how many planes it keeps clear of at once.
     constexpr int max_bumps = 4;
     constexpr std::size_t max_planes = 5;
+
+    /// What a move ran into, as bits: a floor, something upright, and
+    /// with the third that it got stuck.
+    constexpr int blocked_by_floor = 1;
+    constexpr int blocked_by_wall = 2;
+    constexpr int blocked_stuck = 4;
+
+    /// How far up a player in what is solid is tried to be put.
+    constexpr int unstick_height = 18;
+
+    /// How far to a side a player who climbs a step and gets nowhere is
+    /// put to try again, how long the move tried from there is, and how
+    /// far it has to get.
+    constexpr float unstick_nudge = 2.0f;
+    constexpr float unstick_time = 0.1f;
+    constexpr float unstick_progress = 4.0f;
+
+    /// Less than this along both axes of the ground is getting nowhere.
+    constexpr float no_progress = 0.03125f;
 
     /// A velocity without the part that goes into a plane. `bounce` is 1
     /// to slide along it, and more to be thrown back from it. What is
@@ -90,6 +111,16 @@ namespace quake
     return _moves_clients;
   }
 
+  void LevelPhysics::SetWalksClients(const bool walks_clients)
+  {
+    _walks_clients = walks_clients;
+  }
+
+  bool LevelPhysics::GetWalksClients() const
+  {
+    return _walks_clients;
+  }
+
   bool LevelPhysics::HasFlag(const std::int32_t entity, const QcFlag flag) const
   {
     return quake::HasFlag(_fields.flags.Get(_machine, entity), flag);
@@ -149,8 +180,9 @@ namespace quake
     return trace;
   }
 
-  void LevelPhysics::FlyMove(const std::int32_t entity, const float dt) const
+  int LevelPhysics::FlyMove(const std::int32_t entity, const float dt, LevelTraceResult *wall) const
   {
+    int blocked = 0;
     const LevelVector first_velocity = _fields.velocity.Get(_machine, entity);
     LevelVector slide_velocity = first_velocity;
     std::array<LevelVector, max_planes> planes{};
@@ -171,7 +203,7 @@ namespace quake
       {
         // stuck in what is solid
         _fields.velocity.Set(_machine, entity, {});
-        return;
+        return blocked_by_floor | blocked_by_wall;
       }
       if (trace.fraction > 0.0f)
       {
@@ -183,11 +215,19 @@ namespace quake
       if (trace.fraction == 1.0f || !trace.HasEntity()) { break; }
 
       // it came down on a floor, which holds it when it is of the level
-      if (trace.plane_normal[2] > ground_normal &&
-          (trace.entity == 0 || Is(_fields.solid.Get(_machine, trace.entity), QcSolid::Bsp)))
+      if (trace.plane_normal[2] > ground_normal)
       {
-        SetFlag(entity, QcFlag::OnGround, true);
-        _fields.groundentity.Set(_machine, entity, trace.entity);
+        blocked |= blocked_by_floor;
+        if (trace.entity == 0 || Is(_fields.solid.Get(_machine, trace.entity), QcSolid::Bsp))
+        {
+          SetFlag(entity, QcFlag::OnGround, true);
+          _fields.groundentity.Set(_machine, entity, trace.entity);
+        }
+      }
+      if (trace.plane_normal[2] == 0.0f)
+      {
+        blocked |= blocked_by_wall;
+        if (wall != nullptr) { *wall = trace; }
       }
 
       _touching.Impact(entity, trace.entity);
@@ -197,7 +237,7 @@ namespace quake
       if (plane_count >= max_planes)
       {
         _fields.velocity.Set(_machine, entity, {});
-        return;
+        return blocked_by_floor | blocked_by_wall;
       }
       planes[plane_count++] = trace.plane_normal;
 
@@ -226,7 +266,7 @@ namespace quake
         if (plane_count != 2)
         {
           _fields.velocity.Set(_machine, entity, {});
-          return;
+          return blocked_by_floor | blocked_by_wall | blocked_stuck;
         }
         const LevelVector crease = Cross(planes[0], planes[1]);
         velocity = Scaled(crease, Dot(crease, velocity));
@@ -236,8 +276,9 @@ namespace quake
       // not shake in a corner
       if (Dot(velocity, first_velocity) <= 0.0f) { velocity = {}; }
       _fields.velocity.Set(_machine, entity, velocity);
-      if (IsZero(velocity)) { return; }
+      if (IsZero(velocity)) { return blocked; }
     }
+    return blocked;
   }
 
   void LevelPhysics::CheckWaterTransition(const std::int32_t entity) const
@@ -331,9 +372,246 @@ namespace quake
     _touching.Link(entity, false);
   }
 
+  bool LevelPhysics::CheckWater(const std::int32_t entity) const
+  {
+    const LevelVector origin = _fields.origin.Get(_machine, entity);
+    const LevelVector mins = _fields.mins.Get(_machine, entity);
+    const LevelVector maxs = _fields.maxs.Get(_machine, entity);
+
+    // Water, slime, and lava, and as in the original the sky, which has a
+    // number below theirs. Water that flows is water to the collision.
+    const auto is_liquid = [this, &origin](const float height, float &contents)
+    {
+      contents = static_cast<float>(_collision.GetPointContents({origin[0], origin[1], height}));
+      return contents <= static_cast<float>(BspContents::Water);
+    };
+
+    float level = 0.0f;
+    auto type = static_cast<float>(BspContents::Empty);
+    float contents = 0.0f;
+    if (is_liquid(origin[2] + mins[2] + 1.0f, contents))
+    {
+      // the feet are in it: then the waist, then the eyes
+      type = contents;
+      level = 1.0f;
+      if (is_liquid(origin[2] + (mins[2] + maxs[2]) * 0.5f, contents))
+      {
+        level = 2.0f;
+        if (is_liquid(origin[2] + _fields.view_ofs.Get(_machine, entity)[2], contents)) { level = 3.0f; }
+      }
+    }
+    _fields.waterlevel.Set(_machine, entity, level);
+    _fields.watertype.Set(_machine, entity, type);
+    return level > 1.0f;
+  }
+
+  void LevelPhysics::CheckStuck(const std::int32_t entity) const
+  {
+    if (!_collision.TestPosition(entity))
+    {
+      _fields.oldorigin.Set(_machine, entity, _fields.origin.Get(_machine, entity));
+      return;
+    }
+
+    // where the player was free last
+    const LevelVector stuck_at = _fields.origin.Get(_machine, entity);
+    _fields.origin.Set(_machine, entity, _fields.oldorigin.Get(_machine, entity));
+    if (!_collision.TestPosition(entity))
+    {
+      _touching.Link(entity, true);
+      return;
+    }
+
+    // a unit to each side, and higher and higher
+    for (int up = 0; up < unstick_height; up++)
+    {
+      for (int x = -1; x <= 1; x++)
+      {
+        for (int y = -1; y <= 1; y++)
+        {
+          _fields.origin.Set(
+            _machine, entity,
+            Sum(stuck_at, {static_cast<float>(x), static_cast<float>(y), static_cast<float>(up)}));
+          if (!_collision.TestPosition(entity))
+          {
+            _touching.Link(entity, true);
+            return;
+          }
+        }
+      }
+    }
+
+    // stuck for good: the player stays
+    _fields.origin.Set(_machine, entity, stuck_at);
+  }
+
+  void LevelPhysics::ApplyWallFriction(const std::int32_t entity, const LevelTraceResult &wall) const
+  {
+    // only for a player who looks at the wall more than along it
+    const LevelVector forward = LevelAxes::Of(_fields.v_angle.Get(_machine, entity)).forward;
+    const float facing = Dot(wall.plane_normal, forward) + 0.5f;
+    if (facing >= 0.0f) { return; }
+
+    // what goes along the wall is cut, the more the straighter the look
+    LevelVector velocity = _fields.velocity.Get(_machine, entity);
+    const LevelVector along =
+      Difference(velocity, Scaled(wall.plane_normal, Dot(wall.plane_normal, velocity)));
+    velocity[0] = along[0] * (1.0f + facing);
+    velocity[1] = along[1] * (1.0f + facing);
+    _fields.velocity.Set(_machine, entity, velocity);
+  }
+
+  int LevelPhysics::TryUnstick(const std::int32_t entity, const LevelVector &velocity_before) const
+  {
+    constexpr LevelVector nudges[] = {
+      {unstick_nudge, 0.0f, 0.0f},
+      {0.0f, unstick_nudge, 0.0f},
+      {-unstick_nudge, 0.0f, 0.0f},
+      {0.0f, -unstick_nudge, 0.0f},
+      {unstick_nudge, unstick_nudge, 0.0f},
+      {-unstick_nudge, unstick_nudge, 0.0f},
+      {unstick_nudge, -unstick_nudge, 0.0f},
+      {-unstick_nudge, -unstick_nudge, 0.0f},
+    };
+
+    const LevelVector from = _fields.origin.Get(_machine, entity);
+    for (const LevelVector &nudge : nudges)
+    {
+      PushEntity(entity, nudge);
+      if (_machine.IsEntityFree(entity)) { return 0; }
+
+      // the move the player wanted, along the ground
+      _fields.velocity.Set(_machine, entity, {velocity_before[0], velocity_before[1], 0.0f});
+      LevelTraceResult wall;
+      const int blocked = FlyMove(entity, unstick_time, &wall);
+      if (_machine.IsEntityFree(entity)) { return 0; }
+
+      const LevelVector origin = _fields.origin.Get(_machine, entity);
+      if (std::fabs(from[1] - origin[1]) > unstick_progress || std::fabs(from[0] - origin[0]) > unstick_progress)
+      {
+        return blocked;
+      }
+
+      // back, and to the next side
+      _fields.origin.Set(_machine, entity, from);
+    }
+
+    _fields.velocity.Set(_machine, entity, {});
+    return blocked_by_floor | blocked_by_wall | blocked_stuck;
+  }
+
+  void LevelPhysics::WalkMove(const std::int32_t entity, const float dt) const
+  {
+    // whether the player stands is found anew by the move
+    const bool stood = HasFlag(entity, QcFlag::OnGround);
+    SetFlag(entity, QcFlag::OnGround, false);
+
+    const LevelVector origin_before = _fields.origin.Get(_machine, entity);
+    const LevelVector velocity_before = _fields.velocity.Get(_machine, entity);
+
+    LevelTraceResult wall;
+    int blocked = FlyMove(entity, dt, &wall);
+    if (_machine.IsEntityFree(entity)) { return; }
+
+    // nothing upright was in the way: no step to climb
+    if ((blocked & blocked_by_wall) == 0) { return; }
+
+    // no step is climbed in the air, only out of water
+    if (!stood && _fields.waterlevel.Get(_machine, entity) == 0.0f) { return; }
+
+    // a touch on the way may have made the player something else
+    if (!Is(_fields.movetype.Get(_machine, entity), QcMoveType::Walk)) { return; }
+    if (HasFlag(entity, QcFlag::WaterJump)) { return; }
+
+    // where the move without a step ended, should the step be none
+    const LevelVector origin_without_step = _fields.origin.Get(_machine, entity);
+    const LevelVector velocity_without_step = _fields.velocity.Get(_machine, entity);
+
+    // from the start again: up,
+    _fields.origin.Set(_machine, entity, origin_before);
+    PushEntity(entity, {0.0f, 0.0f, step_height});
+    if (_machine.IsEntityFree(entity)) { return; }
+
+    // along the ground,
+    _fields.velocity.Set(_machine, entity, {velocity_before[0], velocity_before[1], 0.0f});
+    blocked = FlyMove(entity, dt, &wall);
+    if (_machine.IsEntityFree(entity)) { return; }
+
+    // The hulls of a level are not exact, and a player a step higher may
+    // be held by what is not there.
+    if (blocked != 0)
+    {
+      const LevelVector origin = _fields.origin.Get(_machine, entity);
+      if (std::fabs(origin_before[1] - origin[1]) < no_progress &&
+          std::fabs(origin_before[0] - origin[0]) < no_progress)
+      {
+        blocked = TryUnstick(entity, velocity_before);
+        if (_machine.IsEntityFree(entity)) { return; }
+      }
+    }
+
+    if ((blocked & blocked_by_wall) != 0) { ApplyWallFriction(entity, wall); }
+
+    // and down, by the step and by what the player fell in the frame
+    const LevelTraceResult down = PushEntity(entity, {0.0f, 0.0f, -step_height + velocity_before[2] * dt});
+    if (_machine.IsEntityFree(entity)) { return; }
+
+    if (down.plane_normal[2] > ground_normal)
+    {
+      // The original asks here whether the player itself is a part of the
+      // level, which no player is. So a player who climbed a step stands
+      // on the ground again only by the next frame's move, as there.
+      if (Is(_fields.solid.Get(_machine, entity), QcSolid::Bsp))
+      {
+        SetFlag(entity, QcFlag::OnGround, true);
+        _fields.groundentity.Set(_machine, entity, down.entity);
+      }
+    }
+    else
+    {
+      // No floor up there, as at a wall on a slope: the move without the
+      // step counts, or the player would hop up what is too steep.
+      _fields.origin.Set(_machine, entity, origin_without_step);
+      _fields.velocity.Set(_machine, entity, velocity_without_step);
+    }
+  }
+
+  void LevelPhysics::MoveClient(const std::int32_t entity, const float dt) const
+  {
+    CheckVelocity(entity);
+
+    const float move_type = _fields.movetype.Get(_machine, entity);
+    if (Is(move_type, QcMoveType::Walk))
+    {
+      // A player falls in every frame, standing or not: the move down is
+      // what finds the floor again. Not one who swims, nor one who is
+      // thrown out of the water.
+      if (!CheckWater(entity) && !HasFlag(entity, QcFlag::WaterJump)) { AddGravity(entity, dt); }
+      CheckStuck(entity);
+      WalkMove(entity, dt);
+    }
+    else if (Is(move_type, QcMoveType::Toss) || Is(move_type, QcMoveType::Bounce)) { MoveTossed(entity, dt); }
+    else if (Is(move_type, QcMoveType::Fly)) { FlyMove(entity, dt); }
+    else if (Is(move_type, QcMoveType::NoClip))
+    {
+      _fields.origin.Set(
+        _machine, entity,
+        Sum(_fields.origin.Get(_machine, entity), Scaled(_fields.velocity.Get(_machine, entity), dt)));
+    }
+    if (_machine.IsEntityFree(entity)) { return; }
+
+    _touching.Link(entity, true);
+  }
+
   void LevelPhysics::MoveEntity(const std::int32_t entity, const float dt)
   {
     if (entity == 0 || _machine.IsEntityFree(entity)) { return; }
+
+    if (_walks_clients && HasFlag(entity, QcFlag::Client))
+    {
+      MoveClient(entity, dt);
+      return;
+    }
 
     const float move_type = _fields.movetype.Get(_machine, entity);
     if (Is(move_type, QcMoveType::Toss) || Is(move_type, QcMoveType::Bounce) || Is(move_type, QcMoveType::Fly) ||
@@ -373,7 +651,7 @@ namespace quake
       {
         continue;
       }
-      if (!_moves_clients && HasFlag(check, QcFlag::Client)) { continue; }
+      if (!_moves_clients && !_walks_clients && HasFlag(check, QcFlag::Client)) { continue; }
 
       // what stands on the pusher moves for certain, and anything else
       // only when the pusher is now where it is

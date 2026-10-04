@@ -528,4 +528,78 @@ namespace
                   std::pair<std::string, std::int32_t>("PlayerPostThink", player)));
     EXPECT_EQ(_frames_started, 1);
   }
+
+  /// A mover that notes the entities it moves among the calls of the game
+  /// code, to see the order of a player's frame.
+  class OrderNotingMover final : public LevelMover
+  {
+    std::vector<std::pair<std::string, std::int32_t>> &_calls;
+
+  public:
+    explicit OrderNotingMover(std::vector<std::pair<std::string, std::int32_t>> &calls) : _calls(calls)
+    {
+    }
+
+    void MoveEntity(const std::int32_t entity, const float dt) override
+    {
+      _calls.emplace_back("moved", entity);
+    }
+  };
+
+  TEST_F(LevelRunningClientTest, GivesAPlayerItCountsTheWholeFrameAtThePlayersTurn)
+  {
+    OrderNotingMover mover(_calls);
+    LevelRunning running(_machine, &mover);
+    const std::int32_t player = MakeThinker(1.0f);
+    const std::int32_t other = MakeThinker(1.0f);
+    EXPECT_EQ(running.GetClientCount(), 0);
+    running.SetClientCount(1);
+    EXPECT_EQ(running.GetClientCount(), 1);
+
+    // before, the thought, the move, after; and only then the next entity
+    running.Advance(step);
+    EXPECT_THAT(_calls, ElementsAre(
+                  std::pair<std::string, std::int32_t>("moved", 0),
+                  std::pair<std::string, std::int32_t>("PlayerPreThink", player),
+                  std::pair<std::string, std::int32_t>("moved", player),
+                  std::pair<std::string, std::int32_t>("PlayerPostThink", player),
+                  std::pair<std::string, std::int32_t>("moved", other)));
+    EXPECT_THAT(_thoughts, ElementsAre(std::pair(player, 1.0f), std::pair(other, 1.0f)));
+    EXPECT_EQ(_frames_started, 1);
+  }
+
+  TEST_F(LevelRunningClientTest, GivesAPlayerThatPushesTheFrameOfAPlayer)
+  {
+    OrderNotingMover mover(_calls);
+    LevelRunning running(_machine, &mover);
+    const std::int32_t player = MakePusher(10.0f, 8.0f);
+    running.SetClientCount(1);
+
+    // whatever the game code made of the player, the mover is asked
+    running.Advance(step);
+    EXPECT_THAT(_calls, ElementsAre(
+                  std::pair<std::string, std::int32_t>("moved", 0),
+                  std::pair<std::string, std::int32_t>("PlayerPreThink", player),
+                  std::pair<std::string, std::int32_t>("moved", player),
+                  std::pair<std::string, std::int32_t>("PlayerPostThink", player)));
+  }
+
+  TEST_F(LevelRunningClientTest, EndsTheFrameOfAPlayerTheGameCodeRemoves)
+  {
+    OrderNotingMover mover(_calls);
+    LevelRunning running(_machine, &mover);
+    const std::int32_t player = MakeThinker(1.0f, "special");
+    _machine.SetBuiltin(_special, [player](QcMachine &machine) { machine.FreeEntity(player); });
+    running.SetClientCount(1);
+
+    running.Advance(step);
+    EXPECT_THAT(_calls, ElementsAre(
+                  std::pair<std::string, std::int32_t>("moved", 0),
+                  std::pair<std::string, std::int32_t>("PlayerPreThink", player)));
+
+    // and a place for a player that is free has no frame at all
+    _calls.clear();
+    running.Advance(step);
+    EXPECT_THAT(_calls, ElementsAre(std::pair<std::string, std::int32_t>("moved", 0)));
+  }
 }

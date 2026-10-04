@@ -87,10 +87,23 @@ of a level, falling and walking and what a door runs into, is asked of a
 is tossed falls and lands, a missile flies until it hits, a monster without a
 floor drops, and a lift carries what stands on it and stops for what has
 nowhere to go, each as the original moves it. Entities that meet are told
-through `LevelTouching`. The player is not moved there: a host moves the
-player with the character of its engine. `QcGlobals` and `QcFields`
+through `LevelTouching`. `QcGlobals` and `QcFields`
 are the globals and fields the two work with, found by name once, for a host
 to read and write as well: `fields.origin.Get(machine, entity)`.
+
+A player is moved as the original moves one, by the same numbers in the same
+order, when a host asks for it. `PlayerMovement` steers: what the player asks
+for in a step, a `PlayerCommand`, becomes the velocity of the player's entity,
+with friction and acceleration on the ground, no more than thirty gained along
+a direction in the air, and swimming in water. `LevelPhysics` then walks the
+player by that velocity, told to with `SetWalksClients`: with gravity, sliding
+along walls, up steps no higher than eighteen, noting whether the player
+stands and how deep in water, and touching the triggers the player comes
+into. `LevelRunning`, told how many players there are with `SetClientCount`,
+gives each its frame as the original does: `PlayerPreThink`, the move,
+`PlayerPostThink`. Jumping is the game code's. Both are off at the start, and
+the player is then not moved there: a host moves the player with the
+character of its engine.
 
 It is a project with an extension, see
 [projects.md](../neon-engine/docs/projects.md#a-project-with-code-in-c) and

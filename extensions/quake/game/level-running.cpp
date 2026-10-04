@@ -20,6 +20,16 @@ namespace quake
     _mover = mover;
   }
 
+  void LevelRunning::SetClientCount(const std::int32_t client_count)
+  {
+    _client_count = client_count;
+  }
+
+  std::int32_t LevelRunning::GetClientCount() const
+  {
+    return _client_count;
+  }
+
   double LevelRunning::GetTime() const
   {
     return _time;
@@ -140,6 +150,17 @@ namespace quake
     return !_machine.IsEntityFree(entity);
   }
 
+  void LevelRunning::AdvanceClient(const std::int32_t entity, const float dt)
+  {
+    RunNamed(_globals.PlayerPreThink, "PlayerPreThink", entity);
+    if (_machine.IsEntityFree(entity)) { return; }
+
+    if (AdvanceThinker(entity, dt) && _mover != nullptr) { _mover->MoveEntity(entity, dt); }
+    if (_machine.IsEntityFree(entity)) { return; }
+
+    RunNamed(_globals.PlayerPostThink, "PlayerPostThink", entity);
+  }
+
   void LevelRunning::Advance(const float dt)
   {
     _globals.frametime.Set(_machine, dt);
@@ -149,6 +170,12 @@ namespace quake
     for (std::int32_t entity = 0; entity < _machine.GetEntityCount(); entity++)
     {
       if (_machine.IsEntityFree(entity)) { continue; }
+
+      if (entity >= 1 && entity <= _client_count)
+      {
+        AdvanceClient(entity, dt);
+        continue;
+      }
 
       if (_fields.movetype.Get(_machine, entity) == static_cast<float>(QcMoveType::Push))
       {

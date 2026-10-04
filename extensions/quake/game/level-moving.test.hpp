@@ -90,12 +90,18 @@ namespace quake
       // the order a host makes them in
       _collision = std::make_unique<LevelCollision>(*_machine);
       std::string error;
-      ASSERT_TRUE(_collision->Build(LevelWorld::MakeLevel(), error)) << error;
+      ASSERT_TRUE(_collision->Build(MakeLevel(), error)) << error;
       _running = std::make_unique<LevelRunning>(*_machine);
       _touching = std::make_unique<LevelTouching>(*_collision, *_running);
       _stepping = std::make_unique<LevelStepping>(*_collision, *_touching, [this] { return _chance; });
       _physics = std::make_unique<LevelPhysics>(*_collision, *_touching);
       _running->SetMover(_physics.get());
+    }
+
+    /// The level the tests run in, for a fixture that wants another.
+    [[nodiscard]] virtual BspFile MakeLevel() const
+    {
+      return LevelWorld::MakeLevel();
     }
 
     [[nodiscard]] std::int32_t FunctionOf(const std::string_view name) const

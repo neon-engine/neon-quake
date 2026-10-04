@@ -33,9 +33,15 @@ namespace quake
   /// - `NoClip`: by its velocity, through everything.
   /// - `None`, and every other: not at all.
   ///
-  /// `Walk`, a player, is not moved here. A host moves the player with the
-  /// character of its engine, and writes where the player is into the
-  /// fields of the entity.
+  /// `Walk`, a player, is not moved here at the start. A host moves the
+  /// player with the character of its engine, and writes where the player
+  /// is into the fields of the entity.
+  ///
+  /// With SetWalksClients() a player is moved here as well, as the
+  /// original moves one: by the velocity `PlayerMovement` gave the player,
+  /// with gravity, sliding along walls, up and down steps no higher than
+  /// `step_height`, through water. Each of them is noted for the game code:
+  /// whether the player stands, on what, and how deep in water.
   ///
   /// An entity that was moved touches the triggers it came into.
   class LevelPhysics final : public LevelMover
@@ -52,6 +58,7 @@ namespace quake
     float _gravity = 800.0f;
     float _max_velocity = 2000.0f;
     bool _moves_clients = false;
+    bool _walks_clients = false;
 
     [[nodiscard]] bool HasFlag(std::int32_t entity, QcFlag flag) const;
 
@@ -70,7 +77,12 @@ namespace quake
     /// Moves an entity by its velocity for a time, sliding along what it
     /// runs into, up to four times. It stands on the ground afterwards
     /// when it came down on a part of the level.
-    void FlyMove(std::int32_t entity, float dt) const;
+    ///
+    /// Gives what it ran into, as bits: 1 for a floor, 2 for what stands
+    /// upright, a wall or the side of a step, and both with 4 when it got
+    /// stuck. The last upright thing it ran into is written to `wall` when
+    /// that is given.
+    int FlyMove(std::int32_t entity, float dt, LevelTraceResult *wall = nullptr) const;
 
     /// Notes whether an entity is in water now, in `watertype` and
     /// `waterlevel`.
@@ -82,7 +94,36 @@ namespace quake
 
     void MoveNoClip(std::int32_t entity, float dt) const;
 
+    /// Notes how deep a player is in water, in `waterlevel`: 1 with the
+    /// feet in it, 2 up to the waist, 3 over the eyes, and what the water
+    /// is in `watertype`. True when the player swims, from the waist on.
+    bool CheckWater(std::int32_t entity) const;
+
+    /// Gets a player out of what is solid: back to where the player last
+    /// was free, `oldorigin`, or to a place a little off and up to 17
+    /// units higher. A player who is free has the place noted for it.
+    void CheckStuck(std::int32_t entity) const;
+
+    /// Slows a player down who runs into a wall while looking at it.
+    void ApplyWallFriction(std::int32_t entity, const LevelTraceResult &wall) const;
+
+    /// For a player who went up for a step and then got nowhere: the move
+    /// is tried again from two units off to each of eight sides. Gives
+    /// what the move that got somewhere ran into, as FlyMove() does.
+    int TryUnstick(std::int32_t entity, const LevelVector &velocity_before) const;
+
+    /// Moves a player who walks: by the velocity, sliding, and when the
+    /// side of a step is in the way and the player stood, the same again
+    /// from a step higher, and down onto it.
+    void WalkMove(std::int32_t entity, float dt) const;
+
+    /// A frame of a player, by the `movetype`.
+    void MoveClient(std::int32_t entity, float dt) const;
+
   public:
+    /// How high a step is that a player walks up.
+    static constexpr float step_height = 18.0f;
+
     /// The collision and the touching have to outlive this.
     LevelPhysics(LevelCollision &collision, LevelTouching &touching);
 
@@ -106,6 +147,28 @@ namespace quake
     void SetMovesClients(bool moves_clients);
 
     [[nodiscard]] bool GetMovesClients() const;
+
+    /// Whether the players, the entities with the flag `Client`, are moved
+    /// here, by their velocity and their `movetype`, as the original moves
+    /// them:
+    ///
+    /// - `Walk`: with gravity, sliding along walls and climbing steps.
+    /// - `Toss` and `Bounce`, a player who died: as anything tossed.
+    /// - `Fly`: sliding, without gravity. `NoClip`: through everything.
+    /// - `None`: not at all.
+    ///
+    /// The player then touches the triggers the player is in, which is how
+    /// a player picks things up and is taken away by a teleporter. A door
+    /// or a lift moves such players and is blocked by them, whatever
+    /// SetMovesClients() says.
+    ///
+    /// Off at the start, for a host that moves the player with the
+    /// character of its engine. A host that turns it on steers the player
+    /// with `PlayerMovement` before each frame, and only reads where the
+    /// player is afterwards.
+    void SetWalksClients(bool walks_clients);
+
+    [[nodiscard]] bool GetWalksClients() const;
 
     /// Moves a door or a lift to a new place. Everything that stands on
     /// it, by `groundentity` and the flag `OnGround`, and everything its
