@@ -1811,6 +1811,8 @@ namespace quake
     if (_demo != nullptr) { _demo->Stop(*_world); }
     _demo.reset();
 
+    // what the game code set, the skill above all, goes on to the next level
+    if (_level != nullptr) { _variables = _level->builtins.GetVariables(); }
     _level.reset();
     _shown.clear();
     // what the bolts showed goes with the level
@@ -1873,6 +1875,7 @@ namespace quake
     }
 
     auto level = std::make_unique<Level>(std::move(progs), *this);
+    level->builtins.GetVariables() = _variables;
     if (std::string problem; !level->file.Read(data.Find(map), problem))
     {
       error = map + " cannot be read: " + problem;
@@ -2037,7 +2040,8 @@ namespace quake
 
     world.Info("The game code runs " + name + ": " + std::to_string(report.spawned) + " entities made, " +
       std::to_string(report.left_out) + " left out, " + std::to_string(report.without_function) + " unknown to it, " +
-      std::to_string(static_cast<int>(_level->globals.total_monsters.Get(_level->machine))) + " monsters");
+      std::to_string(static_cast<int>(_level->globals.total_monsters.Get(_level->machine))) + " monsters, skill " +
+      std::to_string(settings.skill));
     return true;
   }
 

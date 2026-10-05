@@ -368,6 +368,11 @@ namespace quake
     std::vector<float> _wanted_parms;
     float _server_flags = 0.0f;
 
+    // The console variables the game code set, which outlive a level as the
+    // original's do: the skill a hall of start sets holds for the episode
+    // after it. Taken from a level when it stops, and given to the next.
+    QcConsoleVariables _variables;
+
 
     // what the game is shown with, which outlive a level
     const neon::extension::World *_world = nullptr;
