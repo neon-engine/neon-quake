@@ -29,7 +29,7 @@ def run(build, level, frames, extra, output):
         chosen.write(level + "\n")
     try:
         command = [
-            os.path.join(game, "NeonRuntime"), "--headless-renderer", "--window-size", f"{WIDTH}x{HEIGHT}",
+            os.path.join(game, "neon-quake"), "--headless-renderer", "--window-size", f"{WIDTH}x{HEIGHT}",
             "--frames", str(frames), "--time-step", "0.016667", "--output-dir", output,
         ] + extra
         done = subprocess.run(

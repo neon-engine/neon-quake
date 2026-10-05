@@ -93,6 +93,16 @@ neon_add_project(quake
         extensions/quake/sprite-view.cpp
         extensions/quake/sprite-view.hpp
 )
+
+# The game is started as neon-quake, not as the runtime it is made of: the
+# runtime that was just put in its folder is renamed, every time it is put
+# there. The engine's other projects keep the name NeonRuntime.
+set(QUAKE_EXECUTABLE "neon-quake${CMAKE_EXECUTABLE_SUFFIX}")
+add_custom_command(TARGET quake POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E rename
+          "${CMAKE_BINARY_DIR}/quake/NeonRuntime${CMAKE_EXECUTABLE_SUFFIX}" "${CMAKE_BINARY_DIR}/quake/${QUAKE_EXECUTABLE}"
+        VERBATIM
+)
 target_link_libraries(quake-extension PRIVATE quake-game)
 
 # The shaders of the game: its textures read pixel by pixel, its liquids that

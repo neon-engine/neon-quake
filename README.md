@@ -146,7 +146,7 @@ here: only the files of the extension are.
 ```sh
 cmake -S . -B build -G Ninja
 cmake --build build
-build/quake/NeonRuntime
+build/quake/neon-quake
 ```
 
 | Option | Says |
@@ -155,13 +155,14 @@ build/quake/NeonRuntime
 | `-DCMAKE_BUILD_TYPE=<kind>` | `Release` when nothing is said, which is the build for playing. `Debug` is not optimised, and is several times slower in what the game does every frame: use it with a debugger, not to judge how the game runs |
 | `-DNEON_RUNTIME_DIRECTORY=<folder>` | Which NeonRuntime the game is put together with, when it is not one of the engine's builds. A folder with `NeonRuntime` and its `assets` |
 
-The game is put together in `build/quake/`: the runtime, its assets with this
-project's `project.yml` on top, and `extensions/quake/`.
+The game is put together in `build/quake/`: the runtime, named `neon-quake`
+there, its assets with this project's `project.yml` on top, and
+`extensions/quake/`.
 
 ## Running it
 
 ```sh
-build/quake/NeonRuntime
+build/quake/neon-quake
 ```
 
 The level that is shown is `maps/start.bsp`, where the game itself starts,
