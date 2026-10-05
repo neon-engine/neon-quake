@@ -28,6 +28,14 @@ namespace
     EXPECT_EQ(FindAnyCaseName({"Track02.Ogg"}, "track02.ogg"), "Track02.Ogg");
   }
 
+  TEST(AnyCaseNameTest, TakesTheArchiveInUpperCaseWhereBothAreThereAsGameDataAsksForIt)
+  {
+    // GameData asks for PAK0.PAK, so the original release's name wins, and
+    // a folder of pak0.pak alone is still found
+    EXPECT_EQ(FindAnyCaseName({"pak0.pak", "PAK0.PAK"}, "PAK0.PAK"), "PAK0.PAK");
+    EXPECT_EQ(FindAnyCaseName({"pak0.pak"}, "PAK0.PAK"), "pak0.pak");
+  }
+
   TEST(AnyCaseNameTest, TakesTheNameInTheCaseAskedForWhereBothAreThere)
   {
     // a file system that tells case apart can hold both

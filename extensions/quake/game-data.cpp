@@ -19,7 +19,10 @@ namespace quake
     // number that is missing
     for (int number = 0;; number++)
     {
-      const std::optional<std::string> name = FindAnyCaseName(names, "pak" + std::to_string(number) + ".pak");
+      // Asked for in upper case, as the original release names them: where
+      // a folder holds both PAK0.PAK and pak0.pak, which a file system that
+      // tells case apart can, the original's is taken.
+      const std::optional<std::string> name = FindAnyCaseName(names, "PAK" + std::to_string(number) + ".PAK");
       if (!name) { break; }
       const std::string path = std::string(folder) + *name;
 
