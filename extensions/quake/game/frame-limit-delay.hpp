@@ -8,12 +8,13 @@ namespace quake
   /// Holds back the frame limit a player chooses until the slider was left
   /// alone for a while: every step of it would else change how fast the
   /// menu itself is drawn while it is still being moved. What is asked for
-  /// last is handed out once, five seconds after it was asked for.
+  /// last is handed out once, a second after it was asked for, or at once
+  /// when the player leaves the slider.
   class FrameLimitDelay
   {
   public:
     /// How long the slider is left alone before its limit holds.
-    static constexpr double seconds = 5.0;
+    static constexpr double seconds = 1.0;
 
     /// The limit that holds already, which is not waited for.
     constexpr void Start(const int limit)
@@ -37,6 +38,16 @@ namespace quake
     [[nodiscard]] constexpr std::optional<int> Take(const double now)
     {
       if (!_waiting || now < _due) { return std::nullopt; }
+
+      _waiting = false;
+      return _limit;
+    }
+
+    /// The limit that waits, now, whatever the time: the player left the
+    /// slider, so nothing is moved any more. Nothing when none waits.
+    [[nodiscard]] constexpr std::optional<int> TakeNow()
+    {
+      if (!_waiting) { return std::nullopt; }
 
       _waiting = false;
       return _limit;

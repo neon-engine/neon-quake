@@ -6,7 +6,7 @@ namespace
 {
   using quake::FrameLimitDelay;
 
-  TEST(FrameLimitDelayTest, ALimitHoldsFiveSecondsAfterItWasAskedFor)
+  TEST(FrameLimitDelayTest, ALimitHoldsASecondAfterItWasAskedFor)
   {
     FrameLimitDelay delay;
     delay.Start(0);
@@ -14,8 +14,8 @@ namespace
 
     EXPECT_TRUE(delay.IsWaiting());
     EXPECT_EQ(delay.Take(10.0), std::nullopt);
-    EXPECT_EQ(delay.Take(14.9), std::nullopt);
-    EXPECT_EQ(delay.Take(15.0), 60);
+    EXPECT_EQ(delay.Take(10.9), std::nullopt);
+    EXPECT_EQ(delay.Take(11.0), 60);
   }
 
   TEST(FrameLimitDelayTest, ItIsHandedOutOnce)
@@ -32,12 +32,12 @@ namespace
   {
     FrameLimitDelay delay;
     delay.Ask(60, 0.0);
-    delay.Ask(70, 3.0);
-    delay.Ask(80, 4.0);
+    delay.Ask(70, 0.6);
+    delay.Ask(80, 1.2);
 
-    EXPECT_EQ(delay.Take(5.0), std::nullopt) << "five seconds after the first, and one after the last";
-    EXPECT_EQ(delay.Take(8.9), std::nullopt);
-    EXPECT_EQ(delay.Take(9.0), 80) << "only what was asked for last";
+    EXPECT_EQ(delay.Take(1.3), std::nullopt) << "more than a second after the first, and less after the last";
+    EXPECT_EQ(delay.Take(2.1), std::nullopt);
+    EXPECT_EQ(delay.Take(2.2), 80) << "only what was asked for last";
   }
 
   TEST(FrameLimitDelayTest, TheSameLimitAgainChangesNothing)
@@ -49,8 +49,8 @@ namespace
 
     // nor does it start the wait of another anew
     delay.Ask(60, 2.0);
-    delay.Ask(60, 6.0);
-    EXPECT_EQ(delay.Take(7.0), 60);
+    delay.Ask(60, 2.9);
+    EXPECT_EQ(delay.Take(3.0), 60);
   }
 
   TEST(FrameLimitDelayTest, NoLimitIsWaitedForAsANumberIs)
@@ -59,7 +59,22 @@ namespace
     delay.Start(60);
     delay.Ask(0, 0.0);
 
-    EXPECT_EQ(delay.Take(4.0), std::nullopt);
-    EXPECT_EQ(delay.Take(5.0), 0);
+    EXPECT_EQ(delay.Take(0.9), std::nullopt);
+    EXPECT_EQ(delay.Take(1.0), 0);
+  }
+
+  TEST(FrameLimitDelayTest, ALimitThatWaitsIsHandedOutAtOnceWhenTheSliderIsLeft)
+  {
+    FrameLimitDelay delay;
+    delay.Start(0);
+    EXPECT_EQ(delay.TakeNow(), std::nullopt) << "nothing waits";
+
+    delay.Ask(60, 10.0);
+    EXPECT_EQ(delay.TakeNow(), 60);
+    EXPECT_FALSE(delay.IsWaiting());
+
+    // once: neither way hands it out again
+    EXPECT_EQ(delay.TakeNow(), std::nullopt);
+    EXPECT_EQ(delay.Take(20.0), std::nullopt);
   }
 }

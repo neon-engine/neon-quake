@@ -201,8 +201,9 @@ namespace quake
 
     /// Shows the window as the video settings say: its mode, its size, and
     /// whether a frame waits for the screen. Only what differs from how it
-    /// is shown is changed. The frame limit is asked for, and made so five
-    /// seconds after it was asked for last, see FrameLimitDelay.
+    /// is shown is changed. The frame limit is asked for, and made so a
+    /// second after it was asked for last or when its slider is left, see
+    /// FrameLimitDelay.
     void ApplyVideo();
 
     /// The frame limit the options say, as the engine takes it: 0 for

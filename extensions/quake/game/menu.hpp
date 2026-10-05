@@ -54,6 +54,9 @@ namespace quake
     /// The mode of the window, its size, vertical sync, and the most frames
     /// a second.
     static constexpr std::int32_t video_items = 4;
+
+    /// Which of them the slider of the frame limit is, the last.
+    static constexpr std::int32_t frame_limit_item = video_items - 1;
     static constexpr std::int32_t help_pages = 6;
 
     /// How many letters of what a saved game says about itself are

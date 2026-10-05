@@ -1585,9 +1585,13 @@ namespace quake
 
   void GameCode::ReadInput(const World &world, const float frame_time)
   {
-    // a frame limit that was chosen and left alone since is made so
+    // A frame limit that was chosen is made so once its slider was left
+    // alone for a while, or at once when the player is no longer on it: the
+    // cursor went to another setting, or the screen was left.
     _played_time += static_cast<double>(frame_time);
-    if (const std::optional<int> limit = _frame_limit_delay.Take(_played_time))
+    const bool on_slider = _menu.IsOpen() && _menu.GetScreen() == MenuScreen::Video &&
+                           _menu.GetCursor() == Menu::frame_limit_item;
+    if (const std::optional<int> limit = on_slider ? _frame_limit_delay.Take(_played_time) : _frame_limit_delay.TakeNow())
     {
       world.SetFrameLimit(*limit);
       world.Info(*limit > 0 ? "The frames are held to " + std::to_string(*limit) + " a second" : "The frames are held to no limit");
