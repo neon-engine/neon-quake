@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <string>
 
+#include "prompt-device.hpp"
 #include "menu-size.hpp"
 
 namespace quake
@@ -16,6 +17,10 @@ namespace quake
   {
     /// How many saved games there is room for, as in the original.
     static constexpr std::size_t slot_count = 12;
+
+    /// What the player holds, for the pictures of the buttons that the
+    /// hints of the menus show.
+    PromptDevice device = PromptDevice::Keyboard;
 
     /// Whether a game runs. A new game then asks first, since it ends
     /// the one that runs, and only then is there something to save.

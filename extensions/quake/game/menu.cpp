@@ -6,6 +6,7 @@
 #include <cstddef>
 
 #include "center-text.hpp"
+#include "prompts.hpp"
 #include "hud-text.hpp"
 
 namespace quake
@@ -748,6 +749,48 @@ namespace quake
     }
 
     add_column(at, "gfx/box_tr.lmp", "gfx/box_mr.lmp", "gfx/box_mr.lmp", "gfx/box_br.lmp");
+  }
+
+  std::vector<HudPicture> Menu::LayoutHints(const PromptDevice device) const
+  {
+    switch (_screen)
+    {
+    case MenuScreen::Main:
+    case MenuScreen::SinglePlayer:
+    case MenuScreen::Load:
+    case MenuScreen::Save:
+    case MenuScreen::Options:
+    case MenuScreen::Video:
+      break;
+    default:
+      return {};
+    }
+
+    // A picture, its word, and a gap before the next, in a row that is in
+    // the middle from side to side. A picture is twice as high as a letter,
+    // which sits in the middle of it.
+    constexpr std::string_view select_word = "Select";
+    constexpr std::string_view back_word = "Back";
+    constexpr std::int32_t gap = 4;
+    constexpr std::int32_t between = 16;
+    constexpr std::int32_t row_y = 152;
+
+    const auto width_of = [](const std::string_view word)
+    {
+      return Prompts::size + gap + static_cast<std::int32_t>(word.size()) * 8;
+    };
+
+    std::vector<HudPicture> pictures;
+    std::int32_t x = (screen_width - (width_of(select_word) + between + width_of(back_word))) / 2;
+    const auto add = [&](const std::string_view picture, const std::string_view word)
+    {
+      pictures.push_back({.name = picture, .x = x, .y = row_y, .anchor = anchor});
+      add_bronze_line(pictures, word, x + Prompts::size + gap, row_y + (Prompts::size - 8) / 2);
+      x += width_of(word) + between;
+    };
+    add(Prompts::Select(device), select_word);
+    add(Prompts::Back(device), back_word);
+    return pictures;
   }
 
   std::vector<HudPicture> Menu::LayoutPause(const std::int32_t width, const std::int32_t height)

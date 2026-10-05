@@ -1033,8 +1033,13 @@ namespace quake
     // the clock of the menu is the frames that are drawn: the game's own
     // stands still
     _menu_time += static_cast<double>(_frame_time);
-    const std::vector<HudPicture> menu = _menu.Layout(_menu_time, _options, DescribeGame(), widths);
+    const MenuGame game = DescribeGame();
+    const std::vector<HudPicture> menu = _menu.Layout(_menu_time, _options, game, widths);
     pictures.insert(pictures.end(), menu.begin(), menu.end());
+
+    // the buttons that work the menu, as what the player holds has them
+    const std::vector<HudPicture> hints = _menu.LayoutHints(game.device);
+    pictures.insert(pictures.end(), hints.begin(), hints.end());
   }
 
   void GameCode::ShowTitle()
@@ -1309,6 +1314,21 @@ namespace quake
     game.is_in_intermission = _is_over;
     for (std::size_t slot = 0; slot < save_slots; slot++) { game.slots[slot] = _save_names[slot]; }
     game.display_sizes = _display_sizes;
+
+    // What the player used last, as the engine says it. A gamepad that does
+    // not say what it is is taken as the most common one.
+    switch (_world->GetInputDevice())
+    {
+      case NEON_DEVICE_KEYBOARD_AND_MOUSE: game.device = PromptDevice::Keyboard;
+        break;
+      case NEON_DEVICE_PLAYSTATION_4:
+      case NEON_DEVICE_PLAYSTATION_5: game.device = PromptDevice::PlayStation;
+        break;
+      case NEON_DEVICE_SWITCH: game.device = PromptDevice::Switch;
+        break;
+      default: game.device = PromptDevice::Xbox;
+        break;
+    }
     return game;
   }
 

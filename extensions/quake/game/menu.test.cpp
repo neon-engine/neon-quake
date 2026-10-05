@@ -32,6 +32,7 @@ namespace
   using quake::MenuActionKind;
   using quake::MenuGame;
   using quake::MenuKey;
+  using quake::PromptDevice;
   using quake::MenuOptions;
   using quake::MenuScreen;
   using quake::MenuTitleWidths;
@@ -949,6 +950,54 @@ namespace
     EXPECT_TRUE(options.unlimited_frames);
     EXPECT_EQ(options.GetFrameLimit(), 0);
     EXPECT_LT(options.frame_limit, 0.0f) << "the number is still to be chosen";
+  }
+
+  // ---- the hints
+
+  TEST(MenuTest, ShowsTheButtonsThatChooseAndGoBackBelowAMenu)
+  {
+    // a picture of 16 pixels, its word 4 pixels after it and in the middle
+    // of its height, and 16 pixels to the next: 136 pixels in the middle
+    // of 320
+    const Menu menu = make_menu_at(0);
+    std::vector<HudPicture> expected = {MakePicture("prompts/key-enter.png", 92, 152, center)};
+    append(expected, make_bronze_letters("Select", 112, 156));
+    expected.push_back(MakePicture("prompts/key-escape.png", 176, 152, center));
+    append(expected, make_bronze_letters("Back", 196, 156));
+    EXPECT_THAT(menu.LayoutHints(PromptDevice::Keyboard), ElementsAreArray(expected));
+  }
+
+  TEST(MenuTest, ShowsTheButtonsOfWhatThePlayerHolds)
+  {
+    const Menu menu = make_menu_at(0);
+    using Names = std::pair<std::string_view, std::string_view>;
+    const auto names_of = [&](const PromptDevice device)
+    {
+      const std::vector<HudPicture> hints = menu.LayoutHints(device);
+      return Names(hints.front().name, hints[7].name);
+    };
+
+    EXPECT_EQ(names_of(PromptDevice::Xbox), Names("prompts/xbox-a.png", "prompts/xbox-b.png"));
+    EXPECT_EQ(
+      names_of(PromptDevice::PlayStation), Names("prompts/playstation-cross.png", "prompts/playstation-circle.png"));
+
+    // the menus are bound by where a button is: on a Switch controller the
+    // one below is B and the one to the right is A
+    EXPECT_EQ(names_of(PromptDevice::Switch), Names("prompts/switch-b.png", "prompts/switch-a.png"));
+  }
+
+  TEST(MenuTest, ShowsNoHintsWhereAScreenSaysItsKeysItselfOrTheMenusAreClosed)
+  {
+    Menu closed;
+    EXPECT_THAT(closed.LayoutHints(PromptDevice::Xbox), IsEmpty());
+
+    // help, and the question before the game is left
+    EXPECT_THAT(make_menu_in(2).LayoutHints(PromptDevice::Xbox), IsEmpty());
+    EXPECT_THAT(make_menu_in(3).LayoutHints(PromptDevice::Xbox), IsEmpty());
+
+    // the options and the video settings have them
+    EXPECT_FALSE(make_menu_in(1).LayoutHints(PromptDevice::Xbox).empty());
+    EXPECT_FALSE(make_menu_in_video().LayoutHints(PromptDevice::Xbox).empty());
   }
 
   TEST(MenuOptionsTest, SetsTheVideoSettingsByTheirNames)

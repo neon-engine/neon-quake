@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <limits>
 
+#include "game/prompts.hpp"
 #include "formats/picture-reader.hpp"
 #include "formats/picture.hpp"
 
@@ -27,6 +28,16 @@ namespace quake
     if (const auto known = _pictures.find(key); known != _pictures.end()) { return known->second; }
 
     Known &made = _pictures[key];
+
+    // A picture of a button is a file of the game's own assets, which an
+    // image of the user interface reads as it is.
+    if (name.starts_with("prompts/"))
+    {
+      made.path = "extensions://quake/assets/" + std::string(name);
+      made.width = Prompts::size;
+      made.height = Prompts::size;
+      return made;
+    }
 
     if (!_was_read)
     {

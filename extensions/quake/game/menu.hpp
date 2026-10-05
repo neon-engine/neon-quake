@@ -132,6 +132,12 @@ namespace quake
     /// The picture `gfx/pause.lmp` where the original shows it while the
     /// game is paused: around the middle from left to right, and a little
     /// above the middle. A host that knows the real size hands it in.
+    /// The hints below a menu: the button that chooses and the button that
+    /// goes back, as pictures of what the player holds, each with its
+    /// word. Nothing while the menus are closed, and on the screens that
+    /// ask a question or show a page, which say their keys themselves.
+    [[nodiscard]] std::vector<HudPicture> LayoutHints(PromptDevice device) const;
+
     [[nodiscard]] static std::vector<HudPicture> LayoutPause(
       std::int32_t width = pause_width,
       std::int32_t height = pause_height);

@@ -15,3 +15,10 @@ window:
 # video settings, which are written to user://settings.yml, on top of this.
 rendering:
   vsync: false
+
+# The game is played with a gamepad or with keyboard and mouse, and shows the
+# buttons of the one that was used last. Moving the mouse does not take the
+# buttons of a gamepad away: a stick or a gyro may be bound to the mouse
+# outside the game. A key does.
+input:
+  mouse_switches_device: false
