@@ -1,4 +1,5 @@
 #include "menu.hpp"
+#include "prompts.hpp"
 
 #include <limits>
 #include <string>
@@ -33,6 +34,7 @@ namespace
   using quake::MenuGame;
   using quake::MenuKey;
   using quake::PromptDevice;
+  using quake::Prompts;
   using quake::MenuOptions;
   using quake::MenuScreen;
   using quake::MenuTitleWidths;
@@ -956,14 +958,15 @@ namespace
 
   TEST(MenuTest, ShowsTheButtonsThatChooseAndGoBackBelowAMenu)
   {
-    // a picture of 16 pixels, its word 4 pixels after it and in the middle
-    // of its height, and 16 pixels to the next: 136 pixels in the middle
-    // of 320
+    // a picture, its word 4 pixels after it and in the middle of its
+    // height, and 16 pixels to the next. The Enter key is 32 pixels wide and
+    // high, and the Escape key 16: 152 pixels in the middle of 320, and the
+    // Enter key 8 pixels above the row so that its middle is the row's
     const Menu menu = make_menu_at(0);
-    std::vector<HudPicture> expected = {MakePicture("prompts/key-enter.png", 92, 152, center)};
-    append(expected, make_bronze_letters("Select", 112, 156));
-    expected.push_back(MakePicture("prompts/key-escape.png", 176, 152, center));
-    append(expected, make_bronze_letters("Back", 196, 156));
+    std::vector<HudPicture> expected = {MakePicture("prompts/key-enter.png", 84, 144, center)};
+    append(expected, make_bronze_letters("Select", 120, 156));
+    expected.push_back(MakePicture("prompts/key-escape.png", 184, 152, center));
+    append(expected, make_bronze_letters("Back", 204, 156));
     EXPECT_THAT(menu.LayoutHints(PromptDevice::Keyboard), ElementsAreArray(expected));
   }
 
@@ -981,9 +984,25 @@ namespace
     EXPECT_EQ(
       names_of(PromptDevice::PlayStation), Names("prompts/playstation-cross.png", "prompts/playstation-circle.png"));
 
-    // the menus are bound by where a button is: on a Switch controller the
-    // one below is B and the one to the right is A
-    EXPECT_EQ(names_of(PromptDevice::Switch), Names("prompts/switch-b.png", "prompts/switch-a.png"));
+    // a Switch controller chooses with A and goes back with B, as its
+    // games do
+    EXPECT_EQ(names_of(PromptDevice::Switch), Names("prompts/switch-a.png", "prompts/switch-b.png"));
+  }
+
+  TEST(MenuTest, ChoosingAndGoingBackChangePlacesWithASwitchController)
+  {
+    // the menus are bound by where a button is, and on a Switch controller
+    // A is to the right, where the others go back
+    EXPECT_EQ(Prompts::Pressed(MenuKey::Select, PromptDevice::Switch), MenuKey::Back);
+    EXPECT_EQ(Prompts::Pressed(MenuKey::Back, PromptDevice::Switch), MenuKey::Select);
+    EXPECT_EQ(Prompts::Pressed(MenuKey::Up, PromptDevice::Switch), MenuKey::Up);
+    EXPECT_EQ(Prompts::Pressed(MenuKey::Yes, PromptDevice::Switch), MenuKey::Yes);
+
+    for (const PromptDevice device : {PromptDevice::Keyboard, PromptDevice::Xbox, PromptDevice::PlayStation})
+    {
+      EXPECT_EQ(Prompts::Pressed(MenuKey::Select, device), MenuKey::Select);
+      EXPECT_EQ(Prompts::Pressed(MenuKey::Back, device), MenuKey::Back);
+    }
   }
 
   TEST(MenuTest, ShowsNoHintsWhereAScreenSaysItsKeysItselfOrTheMenusAreClosed)

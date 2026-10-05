@@ -768,28 +768,33 @@ namespace quake
 
     // A picture, its word, and a gap before the next, in a row that is in
     // the middle from side to side. A picture is twice as high as a letter,
-    // which sits in the middle of it.
+    // or four times for the Enter key, and the letters sit in the middle
+    // of it.
     constexpr std::string_view select_word = "Select";
     constexpr std::string_view back_word = "Back";
     constexpr std::int32_t gap = 4;
     constexpr std::int32_t between = 16;
     constexpr std::int32_t row_y = 152;
 
-    const auto width_of = [](const std::string_view word)
+    const std::string_view select_picture = Prompts::Select(device);
+    const std::string_view back_picture = Prompts::Back(device);
+    const auto width_of = [](const std::string_view picture, const std::string_view word)
     {
-      return Prompts::size + gap + static_cast<std::int32_t>(word.size()) * 8;
+      return Prompts::SizeOf(picture) + gap + static_cast<std::int32_t>(word.size()) * 8;
     };
 
     std::vector<HudPicture> pictures;
-    std::int32_t x = (screen_width - (width_of(select_word) + between + width_of(back_word))) / 2;
+    std::int32_t x =
+      (screen_width - (width_of(select_picture, select_word) + between + width_of(back_picture, back_word))) / 2;
     const auto add = [&](const std::string_view picture, const std::string_view word)
     {
-      pictures.push_back({.name = picture, .x = x, .y = row_y, .anchor = anchor});
-      add_bronze_line(pictures, word, x + Prompts::size + gap, row_y + (Prompts::size - 8) / 2);
-      x += width_of(word) + between;
+      const std::int32_t size = Prompts::SizeOf(picture);
+      pictures.push_back({.name = picture, .x = x, .y = row_y - (size - Prompts::size) / 2, .anchor = anchor});
+      add_bronze_line(pictures, word, x + size + gap, row_y + (Prompts::size - 8) / 2);
+      x += width_of(picture, word) + between;
     };
-    add(Prompts::Select(device), select_word);
-    add(Prompts::Back(device), back_word);
+    add(select_picture, select_word);
+    add(back_picture, back_word);
     return pictures;
   }
 

@@ -19,7 +19,8 @@ namespace quake
     /// the circle to the right.
     PlayStation,
 
-    /// A Switch controller: B below and A to the right.
+    /// A Switch controller: B below and A to the right, and A is the one
+    /// that chooses.
     Switch,
   };
 } // quake

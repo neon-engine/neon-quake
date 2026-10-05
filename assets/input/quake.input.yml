@@ -11,7 +11,9 @@
 #
 # `pause` opens the menu of the game and goes back in it, escape or start.
 # The `menu-` actions move in it: the arrows or the pad, enter or the lower
-# face button to choose, backspace or the right face button to go back.
+# face button to choose, backspace or the right face button to go back. With
+# a Switch controller the game takes the two face buttons the other way
+# around, so that A chooses and B goes back.
 #
 # Everything can be done with a controller: the sticks walk and look, the
 # right trigger fires, the lower face button jumps, the shoulders swim up and

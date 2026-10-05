@@ -21,6 +21,7 @@
 #include "game/intermission.hpp"
 #include "game/level-spawning.hpp"
 #include "game/player-stats.hpp"
+#include "game/prompts.hpp"
 #include "game/saved-game-capture.hpp"
 #include "game/saved-game-text.hpp"
 #include "game/qc-builtin-number.hpp"
@@ -1712,7 +1713,10 @@ namespace quake
              std::pair("menu-yes", MenuKey::Yes), std::pair("menu-no", MenuKey::No),
            })
       {
-        if (world.WasActionPressed(action)) { Act(_menu.Press(key, _options, DescribeGame())); }
+        // with a Switch controller in the hands, A chooses and B goes back
+        if (!world.WasActionPressed(action)) { continue; }
+        const MenuGame game = DescribeGame();
+        Act(_menu.Press(Prompts::Pressed(key, game.device), _options, game));
       }
     }
     if (_demo != nullptr)

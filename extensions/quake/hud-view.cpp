@@ -34,8 +34,8 @@ namespace quake
     if (name.starts_with("prompts/"))
     {
       made.path = "extensions://quake/assets/" + std::string(name);
-      made.width = Prompts::size;
-      made.height = Prompts::size;
+      made.width = Prompts::SizeOf(name);
+      made.height = Prompts::SizeOf(name);
       return made;
     }
 
