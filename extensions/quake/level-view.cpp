@@ -212,8 +212,6 @@ namespace quake
     // level without any is shown as its textures are.
     LightmapAtlas atlas;
     std::vector<std::string> lightmaps;
-    // the names the pictures of the light were handed over under
-    std::vector<std::string> light_names;
     if (!level.lighting.empty())
     {
       // an item is lit without colours: the data has none for the small levels
@@ -250,13 +248,27 @@ namespace quake
 
         for (std::size_t page = 0; lightmaps.size() < atlas.pages.size(); page++)
         {
-            const std::string name = "lightmaps/" + file_name + "/" + std::to_string(model) + "/" + std::to_string(page);
+          const std::string name = "lightmaps/" + file_name + "/" + std::to_string(model) + "/" + std::to_string(page);
+
+          // The pages of the faces whose light changes are handed over as
+          // their lightmaps apart, in bands, and the shader sums them with
+          // what their styles are worth, see styles.glsl. Nothing of them
+          // is handed over again. An item has the light it was made with.
+          if (!is_item && page < atlas.changing_pages)
+          {
+            lightmaps.push_back(world.SetImage(
+              name + "/layers",
+              atlas.side,
+              atlas.changing_rows * LightmapAtlas::layer_count,
+              atlas.ComposeLayers(static_cast<std::uint32_t>(page))));
+            continue;
+          }
+
           lightmaps.push_back(world.SetImage(
             name,
             atlas.pages[page].width,
             atlas.pages[page].height,
             atlas.pages[page].pixels));
-          light_names.push_back(name);
         }
         if (is_item) { _item_lightmaps[item] = lightmaps; }
       }
@@ -267,7 +279,9 @@ namespace quake
     // each page of the light those faces lie on, which is one but for a
     // level larger than any here
     // which corners are of a face the level gave light
+    // and of which face each is, for the styles of its lightmaps
     std::vector<bool> has_light(mesh.vertices.size(), false);
+    std::vector<std::uint32_t> face_of(mesh.vertices.size(), 0);
     if (is_lit)
     {
       for (std::size_t face = 0; face < mesh.faces.size() && face < atlas.blocks.size(); face++)
@@ -275,9 +289,20 @@ namespace quake
         if (!atlas.blocks[face].is_lit) { continue; }
 
         const BspMeshFace &lit_face = mesh.faces[face];
-        for (std::uint32_t corner = 0; corner < lit_face.vertex_count; corner++) { has_light[lit_face.first_vertex + corner] = true; }
+        for (std::uint32_t corner = 0; corner < lit_face.vertex_count; corner++)
+        {
+          has_light[lit_face.first_vertex + corner] = true;
+          face_of[lit_face.first_vertex + corner] = static_cast<std::uint32_t>(face);
+        }
       }
     }
+
+    // where a place of a page of changing light is in the first band of
+    // its picture, which is as wide and four bands high
+    const float band_scale = atlas.changing_rows > 0
+                               ? static_cast<float>(atlas.side) /
+                                 static_cast<float>(atlas.changing_rows * LightmapAtlas::layer_count)
+                               : 1.0f;
 
     for (const BspMeshGroup &group : mesh.groups)
     {
@@ -306,6 +331,10 @@ namespace quake
         const bool is_dark_part = group.is_liquid && group_is_lit && page == lightmaps.size();
         const bool part_is_lit = group_is_lit && !is_dark_part;
 
+        // the faces of this page have a light that changes, and are drawn
+        // with the shaders that work it out
+        const bool is_styled = part_is_lit && !is_item && page < atlas.changing_pages;
+
         // The corners the group uses, handed over once each. A corner belongs
         // to one face and a face to one texture, so the groups share none.
         std::vector<Vertex> corners;
@@ -325,14 +354,32 @@ namespace quake
             const BspVector place = QuakeSpace::ToEnginePosition(from.position);
             const BspVector normal = QuakeSpace::ToEngineDirection(from.normal);
 
+            // The colour of a corner is white. Of a face whose light
+            // changes it is the styles of its lightmaps instead, each over
+            // 255, which is what its shader reads them from.
+            NeonColor colour{1.0f, 1.0f, 1.0f, 1.0f};
+            if (is_styled)
+            {
+              const std::array<std::uint8_t, 4> &styles = atlas.blocks[face_of[index]].styles;
+              colour = {
+                static_cast<float>(styles[0]) / 255.0f, static_cast<float>(styles[1]) / 255.0f,
+                static_cast<float>(styles[2]) / 255.0f, static_cast<float>(styles[3]) / 255.0f};
+            }
+
             place_of[index] = static_cast<std::uint32_t>(corners.size());
             corners.push_back({
               {place.x, place.y, place.z},
               {normal.x, normal.y, normal.z},
               {from.texture_u, from.texture_v},
-              {1.0f, 1.0f, 1.0f, 1.0f},
+              colour,
             });
-            if (part_is_lit) { light_places.push_back({atlas.vertices[index].u, atlas.vertices[index].v}); }
+            if (is_styled)
+            {
+              light_places.push_back({atlas.vertices[index].u, atlas.vertices[index].v * band_scale});
+            } else if (part_is_lit)
+            {
+              light_places.push_back({atlas.vertices[index].u, atlas.vertices[index].v});
+            }
           }
           indices.push_back(place_of[index]);
         }
@@ -350,59 +397,53 @@ namespace quake
         // and its light
         world.SetText(
           entity, shader_field,
-          group.is_sky ? GameShaders::sky : group.is_liquid ? GameShaders::liquid : GameShaders::surface);
+          group.is_sky ? GameShaders::sky
+          : group.is_liquid ? (is_styled ? GameShaders::liquid_styled : GameShaders::liquid)
+          : is_styled ? GameShaders::surface_styled : GameShaders::surface);
 
         const Pictures &picture = FindPicture(world, data, level, item, group.texture);
+        const std::string &shown_texture = picture.path;
         if (!picture.path.empty()) { world.SetTexts(entity, textures_field, {picture.path}); }
         if (!picture.glow.empty()) { world.SetText(entity, glow_field, picture.glow); }
 
         // A texture that changes: the pictures of its run, and of its
-        // second run, shown through a picture of the entity's own. When any
-        // of them glows, each has a glow, so that one that does not takes
-        // away the glow of the one before.
+        // second run, are those of the level, each handed to the renderer
+        // once. The entity is told which to show when its turn comes, and
+        // names them all now, so that each is ready before it is shown.
         if (const TextureAnimation run = TextureAnimation::Find(level.textures, group.texture); !is_item && run.Changes())
         {
-          const auto make = [&level, &data](const std::int32_t texture)
+          const auto make = [&](const std::int32_t texture)
           {
-            Frame frame;
-            if (texture < 0 || static_cast<std::size_t>(texture) >= level.textures.size() ||
-                !level.textures[texture].has_value())
-            {
-              return frame;
-            }
-            const MipTexture &source = *level.textures[texture];
-            frame.width = source.width;
-            frame.height = source.height;
-            frame.pixels = data.GetPalette().ToRgba(source.pixels[0], source.HasHoles());
-            frame.glow = data.GetPalette().ToGlowRgba(source.pixels[0], source.HasHoles());
-            return frame;
+            const Pictures &frame = FindPicture(world, data, level, item, texture);
+            return Frame{frame.path, frame.glow};
           };
 
           ChangingTexture changing;
           changing.model = model;
+          changing.entity = entity;
+          changing.is_styled = is_styled;
           for (const std::int32_t frame : run.frames) { changing.frames.push_back(make(frame)); }
           for (const std::int32_t frame : run.alternate) { changing.alternate.push_back(make(frame)); }
 
-          const auto glows = [](const Frame &frame) { return !frame.glow.empty(); };
-          changing.glows = std::ranges::any_of(changing.frames, glows) || std::ranges::any_of(changing.alternate, glows);
-
-          const Frame &first = changing.frames.front();
-          if (!first.pixels.empty())
+          std::vector<std::string> ahead;
+          for (const std::vector<Frame> *frames : {&changing.frames, &changing.alternate})
           {
-            changing.name = "textures/changing-" + std::to_string(++_changing_made);
-            world.SetTexts(
-              entity, textures_field, {world.SetImage(changing.name, first.width, first.height, first.pixels)});
-            if (changing.glows)
+            for (const Frame &frame : *frames)
             {
-              changing.glow_name = changing.name + "/glow";
-              // As large as the frames, and dark: a picture that is set
-              // again keeps its size, so one of a single pixel would
-              // never take the glow of a frame.
-              const std::vector<std::uint8_t> dark(static_cast<std::size_t>(first.width) * first.height * 4, 0);
-              world.SetText(entity, glow_field, world.SetImage(changing.glow_name, first.width, first.height, dark));
+              if (!frame.path.empty() && std::ranges::find(ahead, frame.path) == ahead.end()) { ahead.push_back(frame.path); }
             }
+          }
+          if (!ahead.empty())
+          {
+            world.SetTexts(entity, world.FindField("Renderable", "preload"), ahead);
             _changing_textures.push_back(std::move(changing));
           }
+        }
+
+        // what the styles are worth, as the second texture, see styles.glsl
+        if (is_styled && !shown_texture.empty())
+        {
+          world.SetTexts(entity, textures_field, {shown_texture, FindStyleTable(world)});
         }
 
         // A liquid is seen through as much as the level says: its colour is
@@ -453,15 +494,6 @@ namespace quake
     }
 
 
-    // A model of the level with a light that flickers, pulses, or is
-    // switched keeps its atlas, which composes its pictures anew when the
-    // styles change. An item has the light it was made with.
-    const bool changes = std::ranges::any_of(atlas.styles, [](const std::uint8_t style) { return style != 0; });
-    if (!is_item && changes && light_names.size() == atlas.pages.size())
-    {
-      _changing_lights.push_back({std::move(atlas), std::move(light_names)});
-    }
-
     return true;
   }
 
@@ -477,8 +509,6 @@ namespace quake
     _player_placed = false;
     _has_lit = false;
     _has_light = false;
-    _changing_lights.clear();
-    _light_uploads.Clear();
     _changing_textures.clear();
     _part_frames.clear();
     _styles = LightStyles();
@@ -569,38 +599,42 @@ namespace quake
     if (style >= 0) { _styles.Set(static_cast<std::size_t>(style), text); }
   }
 
+  const std::string &LevelView::FindStyleTable(const World &world)
+  {
+    if (_style_table.empty()) { _style_table = world.SetImage(std::string(style_table_name), LightStyles::count, 1, WriteStyleTable()); }
+    return _style_table;
+  }
+
+  std::vector<std::uint8_t> LevelView::WriteStyleTable() const
+  {
+    // a style is worth 1 until the game has said otherwise
+    std::vector<std::uint8_t> table(LightStyles::count * 4, 0);
+    for (std::size_t style = 0; style < LightStyles::count; style++)
+    {
+      const float value = _has_style_values ? _style_values[style] : 1.0f;
+
+      // in 256ths, as the original counts, the low byte and then the high
+      const auto worth = !(value > 0.0f)
+                           ? std::uint32_t{0}
+                           : static_cast<std::uint32_t>(std::min(value, 255.0f) * 256.0f + 0.5f);
+      table[style * 4] = static_cast<std::uint8_t>(worth & 255);
+      table[style * 4 + 1] = static_cast<std::uint8_t>(worth >> 8);
+      table[style * 4 + 3] = 255;
+    }
+    return table;
+  }
+
   void LevelView::UpdateLight(const World &world, const double time)
   {
-    const double frame_seconds = time - _light_time;
-    _light_time = time;
+    const LightStyles::Values values = _styles.GetValues(time);
+    if (_has_style_values && values == _style_values) { return; }
+    _style_values = values;
+    _has_style_values = true;
 
-    // When the styles are worth something else, ten times a second, the
-    // pictures with a face of such a style are composed anew. They go to
-    // the renderer over the next frames, not all in this one: dozens of
-    // pictures in one frame hold that frame up.
-    if (const LightStyles::Values values = _styles.GetValues(time); !_has_style_values || values != _style_values)
-    {
-      _style_values = values;
-      _has_style_values = true;
-
-      for (std::size_t light = 0; light < _changing_lights.size(); light++)
-      {
-        // only the pictures that hold a face whose style changed come back
-        for (const std::uint32_t page : _changing_lights[light].atlas.Compose(values))
-        {
-          if (page < _changing_lights[light].names.size()) { _light_uploads.Add({light, page}); }
-        }
-      }
-    }
-
-    for (const auto &[light, page] : _light_uploads.Take(frame_seconds))
-    {
-      if (light >= _changing_lights.size() || page >= _changing_lights[light].names.size()) { continue; }
-
-      const LightmapAtlasPage &pixels = _changing_lights[light].atlas.pages[page];
-      // the path is the one the materials have already
-      (void) world.SetImage(_changing_lights[light].names[page], pixels.width, pixels.height, pixels.pixels);
-    }
+    // All that goes to the renderer when a light ticks: what each style is
+    // worth now, 64 pixels. The lightmaps are there already, and the
+    // shaders of the faces whose light changes sum them with these.
+    if (!_style_table.empty()) { (void) world.SetImage(std::string(style_table_name), LightStyles::count, 1, WriteStyleTable()); }
   }
 
   void LevelView::SetPartFrame(const std::size_t model, const std::int32_t frame)
@@ -610,6 +644,9 @@ namespace quake
 
   void LevelView::UpdateTextures(const World &world, const double time)
   {
+    const NeonField textures_field = world.FindField("Renderable", "textures");
+    const NeonField glow_field = world.FindField("Renderable", "material.emissive_texture");
+
     for (ChangingTexture &changing : _changing_textures)
     {
       const auto frame = _part_frames.find(changing.model);
@@ -621,20 +658,16 @@ namespace quake
       changing.shown = index;
       changing.shows_alternate = shows_alternate;
 
-      // the picture of the entity, with the pixels of this frame
+      // The entity is told which picture to show. Every picture is with the
+      // renderer already, so nothing is handed over.
       const Frame &shown = run[index];
-      if (shown.pixels.empty()) { continue; }
+      if (shown.path.empty()) { continue; }
 
-      (void) world.SetImage(changing.name, shown.width, shown.height, shown.pixels);
-      if (!changing.glows) { continue; }
+      if (changing.is_styled) { world.SetTexts(changing.entity, textures_field, {shown.path, FindStyleTable(world)}); }
+      else { world.SetTexts(changing.entity, textures_field, {shown.path}); }
 
-      // a frame that does not glow is dark all over, at the size of the
-      // others: a picture that is set again keeps its size
-      if (shown.glow.empty())
-      {
-        const std::vector<std::uint8_t> dark(static_cast<std::size_t>(shown.width) * shown.height * 4, 0);
-        (void) world.SetImage(changing.glow_name, shown.width, shown.height, dark);
-      } else { (void) world.SetImage(changing.glow_name, shown.width, shown.height, shown.glow); }
+      // one that does not glow takes away the glow of the one before
+      world.SetText(changing.entity, glow_field, shown.glow);
     }
   }
 

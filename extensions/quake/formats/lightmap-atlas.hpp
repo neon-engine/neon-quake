@@ -121,6 +121,22 @@ namespace quake
     /// after `Build`.
     LightStyles::Values values{};
 
+    /// How many lightmaps a face has at the most, one for each of its
+    /// styles.
+    static constexpr std::uint32_t layer_count = 4;
+
+    /// How many pages, the first ones, hold the faces whose light changes:
+    /// those with a style that is not 0. They have these pages to
+    /// themselves, and every other face has the pages after them. A
+    /// renderer that works the light of such a face out as it draws, from
+    /// its lightmaps and what its styles are worth at the moment, draws
+    /// these pages with `ComposeLayers`, once, and never composes.
+    std::uint32_t changing_pages = 0;
+
+    /// How many rows of those pages are used, from the top: as high as a
+    /// band of `ComposeLayers` is.
+    std::uint32_t changing_rows = 0;
+
     /// Packs the lightmaps of a mesh, and composes the pages with every
     /// style at 1. `largest_side` is how many pixels a page may be wide and
     /// high at most. `lit` is the coloured light of the level the mesh was
@@ -135,6 +151,22 @@ namespace quake
       std::string &error,
       std::uint32_t largest_side = default_largest_side,
       const LitFile *lit = nullptr);
+
+    /// The lightmaps of the faces of one of the `changing_pages` as they
+    /// are, apart, in place of their sum: a picture `side` pixels wide and
+    /// `layer_count` bands high, each `changing_rows` rows. Band `k` holds
+    /// lightmap `k` of every face of the page, where the page has the face,
+    /// with its border, and is black where a face has no such lightmap. Four
+    /// bytes a pixel, the last of them 255.
+    ///
+    /// A vertex that lies at `u`, `v` of the page lies in band `k` at
+    ///
+    ///     u, (v * side + k * changing_rows) / (layer_count * changing_rows)
+    ///
+    /// and what is shown of the face is the sum over its lightmaps of the
+    /// pixel there times what `LightmapAtlasBlock::styles[k]` is worth, as
+    /// `Compose` sums them. Empty for a page that is not one of them.
+    [[nodiscard]] std::vector<std::uint8_t> ComposeLayers(std::uint32_t page) const;
 
     /// Makes the pixels anew for what the styles are worth now, and returns
     /// the pages that have to be handed to the renderer again, from the

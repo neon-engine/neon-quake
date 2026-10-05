@@ -47,6 +47,7 @@ namespace quake
       std::uint32_t x = 0;
       std::uint32_t y = 0;
       std::uint32_t shelf_height = 0;
+      bool was_changing = false;
 
       for (Item &item : items)
       {
@@ -58,7 +59,13 @@ namespace quake
           y += shelf_height;
           shelf_height = 0;
         }
-        if (item.height > side - y)
+        // The faces whose light changes have pages of their own: they are
+        // drawn another way, see LightmapAtlas::changing_pages. They come
+        // first, so the first that does not change starts a page.
+        const bool starts_the_steady = was_changing && !item.changes;
+        was_changing = item.changes;
+
+        if (item.height > side - y || starts_the_steady)
         {
           page++;
           x = 0;
@@ -243,16 +250,22 @@ namespace quake
 
     // the smallest power of two that holds everything on one page, or the
     // largest side with as many pages as it takes
+    // The faces whose light changes and the rest have pages apart, so two
+    // pages are the fewest for a mesh that has both.
+    const bool has_changing = std::ranges::any_of(items, [](const Item &item) { return item.changes; });
+    const bool has_steady = std::ranges::any_of(items, [](const Item &item) { return !item.changes; });
+    const std::uint32_t fewest_pages = has_changing && has_steady ? 2 : 1;
+
     std::uint32_t page_side = 0;
     std::uint32_t page_count = 0;
     if (!items.empty())
     {
       for (std::uint64_t trial = smallest_side; trial < largest_side; trial *= 2)
       {
-        if (pack(items, static_cast<std::uint32_t>(trial)) == 1)
+        if (pack(items, static_cast<std::uint32_t>(trial)) == fewest_pages)
         {
           page_side = static_cast<std::uint32_t>(trial);
-          page_count = 1;
+          page_count = fewest_pages;
           break;
         }
       }
@@ -285,6 +298,12 @@ namespace quake
     for (const Item &item : items)
     {
       LightmapAtlasPage &page = atlas.pages[item.page];
+
+      if (item.changes)
+      {
+        atlas.changing_pages = std::max(atlas.changing_pages, item.page + 1);
+        atlas.changing_rows = std::max(atlas.changing_rows, item.y + item.height);
+      }
 
       if (item.face == Item::no_face)
       {
@@ -372,6 +391,47 @@ namespace quake
 
     *this = std::move(atlas);
     return true;
+  }
+
+  std::vector<std::uint8_t> LightmapAtlas::ComposeLayers(const std::uint32_t page) const
+  {
+    if (page >= changing_pages || page >= pages.size() || changing_rows == 0) { return {}; }
+
+    // black, and solid as every pixel is
+    const std::size_t band = static_cast<std::size_t>(side) * changing_rows * 4;
+    std::vector<std::uint8_t> pixels(band * layer_count, 0);
+    for (std::size_t at = 3; at < pixels.size(); at += 4) { pixels[at] = 255; }
+
+    for (const LightmapAtlasBlock &block : blocks)
+    {
+      if (!block.is_lit || block.page != page) { continue; }
+
+      const std::size_t style_count = block.CountStyles();
+      const std::size_t layer_size = static_cast<std::size_t>(block.width) * block.height * 3;
+      for (std::size_t layer = 0; layer < style_count; layer++)
+      {
+        // as a block of a page is made: every pixel the sample nearest to
+        // it, a pixel of the border the one at the edge next to it
+        for (std::uint32_t row = 0; row < block.height + 2 * border; row++)
+        {
+          const std::uint32_t sample_row = std::clamp(row, border, block.height + border - 1) - border;
+          for (std::uint32_t column = 0; column < block.width + 2 * border; column++)
+          {
+            const std::uint32_t sample_column = std::clamp(column, border, block.width + border - 1) - border;
+            const std::uint8_t *colour = &samples[
+              block.first_sample + layer * layer_size +
+              (static_cast<std::size_t>(sample_row) * block.width + sample_column) * 3];
+
+            const std::size_t at = layer * band +
+              (static_cast<std::size_t>(block.y - border + row) * side + (block.x - border + column)) * 4;
+            pixels[at] = colour[0];
+            pixels[at + 1] = colour[1];
+            pixels[at + 2] = colour[2];
+          }
+        }
+      }
+    }
+    return pixels;
   }
 
   std::vector<std::uint32_t> LightmapAtlas::Compose(const LightStyles::Values &new_values)

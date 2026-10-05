@@ -663,7 +663,12 @@ namespace
     // what a host painted over the bright block, and on a face that stays
     const LightmapAtlasBlock &bright = atlas.blocks[0];
     const LightmapAtlasBlock &steady = atlas.blocks[2];
-    LightmapAtlasPage &page = atlas.pages[0];
+    // the face that changes has the first page to itself, and the others
+    // the one after it
+    ASSERT_EQ(atlas.blocks[1].page, 0u);
+    ASSERT_EQ(bright.page, 1u);
+    ASSERT_EQ(steady.page, 1u);
+    LightmapAtlasPage &page = atlas.pages[1];
     page.pixels[(bright.y * page.width + bright.x) * 4] = 7;
     page.pixels[(steady.y * page.width + steady.x) * 4] = 9;
 
@@ -675,6 +680,109 @@ namespace
     EXPECT_EQ(page.pixels[(bright.y * page.width + bright.x) * 4], 7);
     EXPECT_EQ(page.pixels[(steady.y * page.width + steady.x) * 4], 9);
     EXPECT_EQ(SampleAt(atlas, atlas.vertices[mesh.faces[1].first_vertex]), 0);
+  }
+
+  TEST(LightmapAtlasTest, GivesTheFacesWhoseLightChangesPagesOfTheirOwn)
+  {
+    // five faces of 6 by 6 samples, four to a page of 16 by 16 pixels. The
+    // two that change do not fill a page, and the next page starts with
+    // the first that does not all the same.
+    BspMesh mesh;
+    for (int i = 0; i < 5; i++) { AddFace(mesh, 6, 6, std::vector<std::uint8_t>(36, 100)); }
+    mesh.faces[1].light_styles = {3, 255, 255, 255};
+    mesh.faces[4].lightmap.resize(72, 40);
+    mesh.faces[4].light_styles = {0, 7, 255, 255};
+
+    LightmapAtlas atlas;
+    std::string error;
+    ASSERT_TRUE(atlas.Build(mesh, error, 16)) << error;
+
+    EXPECT_EQ(atlas.changing_pages, 1u);
+    EXPECT_EQ(atlas.changing_rows, 8u) << "one shelf of blocks of 6 rows with their border";
+    ASSERT_EQ(atlas.pages.size(), 2u);
+    EXPECT_EQ(atlas.blocks[1].page, 0u);
+    EXPECT_EQ(atlas.blocks[4].page, 0u);
+    for (const int face : {0, 2, 3}) { EXPECT_EQ(atlas.blocks[static_cast<std::size_t>(face)].page, 1u) << face; }
+  }
+
+  TEST(LightmapAtlasTest, AMeshWithoutAFaceWhoseLightChangesHasNoSuchPage)
+  {
+    BspMesh mesh;
+    AddFace(mesh, 2, 2, {1, 2, 3, 4});
+
+    LightmapAtlas atlas;
+    std::string error;
+    ASSERT_TRUE(atlas.Build(mesh, error)) << error;
+
+    EXPECT_EQ(atlas.changing_pages, 0u);
+    EXPECT_EQ(atlas.changing_rows, 0u);
+    EXPECT_EQ(atlas.pages.size(), 1u);
+    EXPECT_THAT(atlas.ComposeLayers(0), IsEmpty());
+  }
+
+  TEST(LightmapAtlasTest, HandsOutTheLightmapsOfAFaceApartOneBandForEach)
+  {
+    // a face of two samples with two lightmaps, of the styles 0 and 4, and
+    // one with a single lightmap of style 9
+    BspMesh mesh;
+    AddFace(mesh, 2, 1, {10, 20, 110, 120}).light_styles = {0, 4, 255, 255};
+    AddFace(mesh, 1, 1, {77}).light_styles = {9, 255, 255, 255};
+
+    LightmapAtlas atlas;
+    std::string error;
+    ASSERT_TRUE(atlas.Build(mesh, error)) << error;
+    ASSERT_EQ(atlas.changing_pages, 1u);
+
+    const std::vector<std::uint8_t> layers = atlas.ComposeLayers(0);
+    const std::uint32_t rows = atlas.changing_rows;
+    ASSERT_EQ(layers.size(), static_cast<std::size_t>(atlas.side) * rows * 4 * 4) << "four bands of the used rows";
+
+    const auto at = [&](const std::uint32_t band, const std::uint32_t x, const std::uint32_t y)
+    {
+      return layers[(static_cast<std::size_t>(band * rows + y) * atlas.side + x) * 4];
+    };
+
+    const LightmapAtlasBlock &two = atlas.blocks[0];
+    EXPECT_EQ(at(0, two.x, two.y), 10);
+    EXPECT_EQ(at(0, two.x + 1, two.y), 20);
+    EXPECT_EQ(at(1, two.x, two.y), 110);
+    EXPECT_EQ(at(1, two.x + 1, two.y), 120);
+    EXPECT_EQ(at(2, two.x, two.y), 0) << "it has no third lightmap";
+
+    // the border repeats the sample at the edge, in every band
+    EXPECT_EQ(at(0, two.x - 1, two.y), 10);
+    EXPECT_EQ(at(1, two.x + 2, two.y + 1), 120);
+
+    const LightmapAtlasBlock &one = atlas.blocks[1];
+    EXPECT_EQ(at(0, one.x, one.y), 77);
+    EXPECT_EQ(at(1, one.x, one.y), 0);
+
+    // solid all over
+    for (std::size_t alpha = 3; alpha < layers.size(); alpha += 4) { ASSERT_EQ(layers[alpha], 255); }
+  }
+
+  TEST(LightmapAtlasTest, TheSumOfTheBandsTimesTheirStylesIsWhatComposeMakes)
+  {
+    BspMesh mesh;
+    AddFace(mesh, 2, 1, {10, 20, 110, 120}).light_styles = {0, 4, 255, 255};
+
+    LightmapAtlas atlas;
+    std::string error;
+    ASSERT_TRUE(atlas.Build(mesh, error)) << error;
+    const std::vector<std::uint8_t> layers = atlas.ComposeLayers(0);
+
+    LightStyles::Values values;
+    values.fill(1.0f);
+    values[4] = 0.5f;
+    (void) atlas.Compose(values);
+
+    const LightmapAtlasBlock &block = atlas.blocks[0];
+    for (std::uint32_t x = block.x; x < block.x + 2; x++)
+    {
+      const std::size_t first = (static_cast<std::size_t>(block.y) * atlas.side + x) * 4;
+      const std::size_t second = (static_cast<std::size_t>(atlas.changing_rows + block.y) * atlas.side + x) * 4;
+      EXPECT_EQ(PixelAt(atlas.pages[0], x, block.y), layers[first] + layers[second] / 2) << x;
+    }
   }
 
   TEST(LightmapAtlasTest, TakesAStyleNoLightOfTheGameHasAsOne)

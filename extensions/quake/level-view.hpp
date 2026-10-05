@@ -13,7 +13,6 @@
 
 #include <neon/extension/neon-extension.hpp>
 
-#include "game/spread-queue.hpp"
 #include "formats/bsp-file.hpp"
 #include "formats/bsp-light-point.hpp"
 #include "formats/entity-text.hpp"
@@ -73,65 +72,56 @@ namespace quake
       std::string glow;
     };
 
-    /// One picture of a texture that changes, as the renderer takes it:
-    /// its size, its pixels, and its pixels that glow, which are empty when
-    /// none does.
+    /// One picture of a texture that changes: the paths the renderer knows
+    /// it and its pixels that glow by. The second is empty when none does.
     struct Frame
     {
-      std::uint32_t width = 0;
-      std::uint32_t height = 0;
-      std::vector<std::uint8_t> pixels;
-      std::vector<std::uint8_t> glow;
+      std::string path;
+      std::string glow;
     };
 
-    /// An entity that shows a texture that changes. The engine draws an
-    /// entity with the textures it had when it was first drawn
-    /// (neon-engine#402), so the entity is given a picture of its own,
-    /// and that picture is handed to the renderer anew with the pixels of
-    /// the frame whose turn it is.
+    /// An entity that shows a texture that changes: it is told the picture
+    /// whose turn it is. The pictures are those of the level, handed to the
+    /// renderer once each.
     struct ChangingTexture
     {
       /// The number of the model of the level it is a part of.
       std::size_t model = 0;
 
-      /// The names the renderer knows its picture and its glow by.
-      std::string name;
-      std::string glow_name;
+      neon::extension::Entity entity = 0;
+
+      /// Whether its light changes too, so that its second texture is the
+      /// table of the styles, see styles.glsl.
+      bool is_styled = false;
 
       /// The pictures it shows in turn, and those it shows while the frame
       /// of its model is not 0.
       std::vector<Frame> frames;
       std::vector<Frame> alternate;
 
-      /// Whether any of them glows, so that each is told its glow.
-      bool glows = false;
-
       std::size_t shown = SIZE_MAX;
       bool shows_alternate = false;
     };
 
-    /// The light of a model of the level that changes with time: the atlas,
-    /// which composes its pictures anew for other values of the styles, and
-    /// the names the renderer knows those pictures by.
-    struct ChangingLight
-    {
-      LightmapAtlas atlas;
-      std::vector<std::string> names;
-    };
-
     // The styles of the lights of the level, as the game code sets them: a
-    // flicker, a pulse, a light that a switch turns on. And the models that
-    // have a face lit by any style but the steady one.
+    // flicker, a pulse, a light that a switch turns on, and what each is
+    // worth now.
     LightStyles _styles;
-    std::vector<ChangingLight> _changing_lights;
     LightStyles::Values _style_values{};
     bool _has_style_values = false;
 
-    // The pictures of light that were composed anew and are still to go to
-    // the renderer, a few in each frame, and the time of the frame before,
-    // which says how long a frame is.
-    SpreadQueue _light_uploads;
-    double _light_time = 0.0;
+    // The picture that tells the shaders what each style is worth, once it
+    // was handed over: the path a material names it by. It is the same for
+    // every level.
+    static constexpr std::string_view style_table_name = "light-styles";
+    std::string _style_table;
+
+    /// The path of that picture, handing it over when it was not yet.
+    const std::string &FindStyleTable(const neon::extension::World &world);
+
+    /// Its pixels: what each style is worth in 256ths, the low byte in red
+    /// and the high byte in green, see styles.glsl.
+    [[nodiscard]] std::vector<std::uint8_t> WriteStyleTable() const;
 
     // the entity everything of the level that is shown stands under
     neon::extension::Entity _root = 0;
@@ -174,9 +164,6 @@ namespace quake
     // for each model of the level, by its number
     std::vector<ChangingTexture> _changing_textures;
     std::map<std::size_t, std::int32_t> _part_frames;
-
-    // how many pictures of textures that change were made, for their names
-    std::size_t _changing_made = 0;
 
     /// Finds where a player starts among the entities of a level.
     void FindStart(const neon::extension::World &world, const EntityText &text, const std::string &map);
@@ -238,9 +225,10 @@ namespace quake
     void SetLightStyle(std::int32_t style, std::string_view text);
 
     /// Makes the light of the level what its styles make it at a time of
-    /// the game, in seconds: the pictures of the light that hold a face
-    /// whose style changed are composed anew and handed to the renderer
-    /// again. A level whose lights are all steady costs nothing.
+    /// the game, in seconds. When a style is worth something else, the
+    /// renderer is told what each is worth, a picture of 64 pixels, and
+    /// nothing else: the lightmaps of the faces whose light changes are
+    /// there already, apart, and their shaders sum them, see styles.glsl.
     void UpdateLight(const neon::extension::World &world, double time);
 
     /// Says which frame the game code set for a model of the level, by its
