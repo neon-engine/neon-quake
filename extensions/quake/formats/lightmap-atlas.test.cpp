@@ -565,8 +565,9 @@ namespace
 
   TEST(LightmapAtlasTest, ComposesOnlyThePagesWithAFaceOfAStyleThatChanged)
   {
-    // four blocks of 6 by 6 samples fill a page of 16 by 16 pixels: faces
-    // 0 to 3 are on page 0, 4 to 7 on page 1, and 8 and 9 on page 2
+    // four blocks of 6 by 6 samples fill a page of 16 by 16 pixels. The two
+    // faces whose light changes come first, so they are on page 0 with the
+    // faces 0 and 1, and the rest is on the pages 1 and 2
     BspMesh mesh;
     for (int i = 0; i < 10; i++) { AddFace(mesh, 6, 6, std::vector<std::uint8_t>(36, 100)); }
     mesh.faces[5].lightmap.resize(72, 50);
@@ -590,14 +591,14 @@ namespace
 
     const std::vector<LightmapAtlasPage> before = atlas.pages;
     values[4] = 0.5f;
-    EXPECT_THAT(atlas.Compose(values), ElementsAre(1u));
-    EXPECT_EQ(atlas.pages[0].pixels, before[0].pixels);
+    EXPECT_THAT(atlas.Compose(values), ElementsAre(0u));
+    EXPECT_EQ(atlas.pages[1].pixels, before[1].pixels);
     EXPECT_EQ(atlas.pages[2].pixels, before[2].pixels);
     EXPECT_EQ(SampleAt(atlas, atlas.vertices[mesh.faces[5].first_vertex]), 125);
     EXPECT_EQ(SampleAt(atlas, atlas.vertices[mesh.faces[4].first_vertex]), 100);
 
     values[33] = 0.0f;
-    EXPECT_THAT(atlas.Compose(values), ElementsAre(2u));
+    EXPECT_THAT(atlas.Compose(values), ElementsAre(0u));
     EXPECT_EQ(SampleAt(atlas, atlas.vertices[mesh.faces[9].first_vertex]), 0);
     EXPECT_EQ(SampleAt(atlas, atlas.vertices[mesh.faces[8].first_vertex]), 100);
 
@@ -606,6 +607,46 @@ namespace
     EXPECT_THAT(atlas.Compose(values), ElementsAre(0u, 1u, 2u));
     EXPECT_EQ(SampleAt(atlas, atlas.vertices[mesh.faces[0].first_vertex]), 200);
     EXPECT_EQ(SampleAt(atlas, atlas.vertices[mesh.faces[5].first_vertex]), 225);
+  }
+
+  TEST(LightmapAtlasTest, PutsTheFacesWhoseLightChangesTogetherOnTheFirstPages)
+  {
+    // twelve faces fill three pages of four. Those with a style that is
+    // not 0 are spread over the level, and lie together in the atlas: a
+    // page with one of them goes to the renderer again whenever a style
+    // ticks, and a page without one never does.
+    BspMesh mesh;
+    for (int i = 0; i < 12; i++) { AddFace(mesh, 6, 6, std::vector<std::uint8_t>(36, 100)); }
+    for (const int face : {1, 6, 11}) { mesh.faces[static_cast<std::size_t>(face)].light_styles = {3, 255, 255, 255}; }
+
+    // a higher face that never changes comes after them all the same
+    AddFace(mesh, 6, 8, std::vector<std::uint8_t>(48, 100));
+
+    LightmapAtlas atlas;
+    std::string error;
+    ASSERT_TRUE(atlas.Build(mesh, error, 16)) << error;
+
+    for (const int face : {1, 6, 11}) { EXPECT_EQ(atlas.blocks[static_cast<std::size_t>(face)].page, 0u) << face; }
+
+    LightStyles::Values values;
+    values.fill(1.0f);
+    values[3] = 0.25f;
+    EXPECT_THAT(atlas.Compose(values), ElementsAre(0u));
+
+    // no block lies over another, also where a higher one follows lower ones
+    for (std::size_t a = 0; a < atlas.blocks.size(); a++)
+    {
+      for (std::size_t b = a + 1; b < atlas.blocks.size(); b++)
+      {
+        const LightmapAtlasBlock &one = atlas.blocks[a];
+        const LightmapAtlasBlock &other = atlas.blocks[b];
+        if (one.page != other.page) { continue; }
+
+        const bool apart = one.x + one.width < other.x || other.x + other.width < one.x ||
+                           one.y + one.height < other.y || other.y + other.height < one.y;
+        EXPECT_TRUE(apart) << a << " and " << b;
+      }
+    }
   }
 
   TEST(LightmapAtlasTest, WritesOnlyThePixelsOfFacesThatChangeWhenItComposes)

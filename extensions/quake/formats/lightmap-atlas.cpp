@@ -24,6 +24,11 @@ namespace quake
       std::uint32_t width = 0;
       std::uint32_t height = 0;
 
+      /// Whether a light of it flickers, pulses, or is switched: whether it
+      /// has a style that is not 0, and so is composed anew while the game
+      /// runs.
+      bool changes = false;
+
       /// The page it was put on, and the pixel its border starts at.
       std::uint32_t page = 0;
       std::uint32_t x = 0;
@@ -31,9 +36,9 @@ namespace quake
     };
 
     /// Puts the items on square pages of a side, in the order they come in,
-    /// which has to be from the highest to the lowest. A page is filled in
+    /// which is best from the highest to the lowest. A page is filled in
     /// shelves: items go next to each other from the left until one does not
-    /// fit, which starts the next shelf below, as high as its first item;
+    /// fit, which starts the next shelf below, as high as its highest item;
     /// and a shelf that does not fit below starts the next page. Returns how
     /// many pages it took, or 0 when an item is larger than a page.
     std::uint32_t pack(std::vector<Item> &items, const std::uint32_t side)
@@ -60,8 +65,10 @@ namespace quake
           y = 0;
           shelf_height = 0;
         }
-        // the first item of a shelf is its highest, since they come sorted
-        if (shelf_height == 0) { shelf_height = item.height; }
+        // The first item of a shelf is its highest where they come sorted.
+        // Where the order starts anew from the highest, in the middle of a
+        // shelf, the shelf grows to hold it.
+        shelf_height = std::max(shelf_height, item.height);
 
         item.page = page;
         item.x = x;
@@ -207,6 +214,10 @@ namespace quake
       item.face = face_index;
       item.width = face.lightmap_width + 2 * border;
       item.height = face.lightmap_height + 2 * border;
+      item.changes = std::ranges::any_of(face.light_styles, [](const std::uint8_t style)
+      {
+        return style != 0 && style != BspFace::no_style;
+      });
       items.push_back(item);
     }
 
@@ -218,10 +229,17 @@ namespace quake
       items.push_back(item);
     }
 
-    // The highest first, so that a shelf wastes little above its items. What
-    // is as high stays in the order of the faces, which keeps the atlas of a
-    // level the same every time it is made.
-    std::ranges::stable_sort(items, [](const Item &a, const Item &b) { return a.height > b.height; });
+    // The faces whose light changes first, so that they lie together on as
+    // few pages as they take: a page with one of them is handed to the
+    // renderer again every time a style ticks, ten times a second, and a
+    // level has few of them among thousands. Then the highest first, so
+    // that a shelf wastes little above its items. What is as high stays in
+    // the order of the faces, which keeps the atlas of a level the same
+    // every time it is made.
+    std::ranges::stable_sort(items, [](const Item &a, const Item &b)
+    {
+      return a.changes != b.changes ? a.changes : a.height > b.height;
+    });
 
     // the smallest power of two that holds everything on one page, or the
     // largest side with as many pages as it takes

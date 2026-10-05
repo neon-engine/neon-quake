@@ -152,6 +152,7 @@ build/quake/NeonRuntime
 | Option | Says |
 |---|---|
 | `-DNEON_ENGINE_DIRECTORY=<folder>` | Where the engine is, when it is not `../neon-engine` |
+| `-DCMAKE_BUILD_TYPE=<kind>` | `Release` when nothing is said, which is the build for playing. `Debug` is not optimised, and is several times slower in what the game does every frame: use it with a debugger, not to judge how the game runs |
 | `-DNEON_RUNTIME_DIRECTORY=<folder>` | Which NeonRuntime the game is put together with, when it is not one of the engine's builds. A folder with `NeonRuntime` and its `assets` |
 
 The game is put together in `build/quake/`: the runtime, its assets with this

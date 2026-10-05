@@ -4,6 +4,17 @@
 # and what is used of it is cmake/NeonSdk.cmake, the two headers of
 # extensions, and a NeonRuntime that is built already.
 cmake_minimum_required(VERSION 3.18 FATAL_ERROR)
+
+# A build that was told nothing of its kind is one for playing: optimised.
+# Without this the game is compiled as it is written, and what it does ten
+# times a second, the lights that flicker, takes ten milliseconds in place
+# of half of one, which is seen as frames that come unevenly. A generator
+# with several kinds in one build folder is told its kind when it builds.
+get_property(QUAKE_IS_MULTI_CONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+if (NOT QUAKE_IS_MULTI_CONFIG AND NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "The kind of build: Release, Debug, RelWithDebInfo, or MinSizeRel" FORCE)
+endif ()
+
 project(neon-quake C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
