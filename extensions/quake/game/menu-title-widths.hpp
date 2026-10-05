@@ -26,6 +26,9 @@ namespace quake
 
     /// `gfx/p_option.lmp`
     std::int32_t options = 144;
+
+    /// `gfx/vidmodes.lmp`
+    std::int32_t video = 216;
   };
 } // quake
 

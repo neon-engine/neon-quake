@@ -667,7 +667,7 @@ namespace quake
       break;
 
     case MenuScreen::Video:
-      AddVideo(pictures, options, widths.options, time);
+      AddVideo(pictures, options, widths.video, time);
       break;
 
     case MenuScreen::Help:
@@ -853,7 +853,7 @@ namespace quake
   {
     pictures.push_back({.name = "gfx/qplaque.lmp", .x = 16, .y = title_y, .anchor = anchor});
     pictures.push_back({
-      .name = "gfx/p_option.lmp",
+      .name = "gfx/vidmodes.lmp",
       .x = (screen_width - title_width) / 2,
       .y = title_y,
       .anchor = anchor,

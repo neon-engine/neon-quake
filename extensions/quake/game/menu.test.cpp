@@ -792,7 +792,7 @@ namespace
 
     std::vector<HudPicture> expected = {
       MakePicture("gfx/qplaque.lmp", 16, 4, center),
-      MakePicture("gfx/p_option.lmp", 88, 4, center),
+      MakePicture("gfx/vidmodes.lmp", 52, 4, center),
     };
     append(expected, make_bronze_letters("Video Mode", 112, 32));
     append(expected, make_bronze_letters("fullscreen", 220, 32));

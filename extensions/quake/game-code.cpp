@@ -1027,6 +1027,7 @@ namespace quake
     widths.load = _hud.GetWidth(*_world, *_data, "gfx/p_load.lmp");
     widths.save = _hud.GetWidth(*_world, *_data, "gfx/p_save.lmp");
     widths.options = _hud.GetWidth(*_world, *_data, "gfx/p_option.lmp");
+    widths.video = _hud.GetWidth(*_world, *_data, "gfx/vidmodes.lmp");
 
     // the clock of the menu is the frames that are drawn: the game's own
     // stands still
