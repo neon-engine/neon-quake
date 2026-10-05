@@ -2,8 +2,9 @@
 /build/
 
 # The data of the game is not ours and is never committed: the player's own
-# copy of id1, or any other game folder, wherever it is put.
-id1/
+# copy of id1, or any other game folder, wherever it is put. Copies kept
+# side by side, as id1.librequake, are ignored as well.
+id1*/
 *.pak
 *.PAK
 
