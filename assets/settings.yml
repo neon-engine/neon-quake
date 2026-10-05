@@ -10,3 +10,8 @@ window:
   width: 1920
   height: 1080
   mode: borderless
+
+# The game draws every frame it can unless the player says otherwise in its
+# video settings, which are written to user://settings.yml, on top of this.
+rendering:
+  vsync: false

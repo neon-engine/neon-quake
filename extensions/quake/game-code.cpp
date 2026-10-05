@@ -15,6 +15,7 @@
 #include "formats/entity-text.hpp"
 #include "formats/progs.hpp"
 #include "formats/quake-space.hpp"
+#include "game/video-settings-file.hpp"
 #include "game/center-text.hpp"
 #include "game/hud-text.hpp"
 #include "game/intermission.hpp"
@@ -1379,6 +1380,21 @@ namespace quake
     add(MenuOptions::vertical_sync_name, _options.vertical_sync ? 1.0f : 0.0f);
     add(MenuOptions::frame_limit_name, _options.frame_limit);
     _world->WriteFile(std::string(options_file), std::vector<std::uint8_t>(text.begin(), text.end()));
+    WriteVideoSettings();
+  }
+
+  void GameCode::WriteVideoSettings()
+  {
+    const std::string wanted = VideoSettingsFile::Write(_options);
+    const std::string path(VideoSettingsFile::path);
+
+    // only when it says something else, which at a start is seldom
+    std::vector<std::uint8_t> there;
+    if (_world->FileExists(path) && _world->ReadFile(path, there) && std::string(there.begin(), there.end()) == wanted)
+    {
+      return;
+    }
+    _world->WriteFile(path, std::vector<std::uint8_t>(wanted.begin(), wanted.end()));
   }
 
   void GameCode::Save(const std::size_t slot)
@@ -1471,6 +1487,12 @@ namespace quake
 
   void GameCode::ReadVideo()
   {
+    // For the next start, also when the player chose in a version of the
+    // game that did not write it yet. Before what was never chosen is made
+    // what the window is now, below: that is not a choice to keep, and a
+    // run without a window has a size of its own.
+    WriteVideoSettings();
+
     // the sizes the display offers, which the video settings go through
     _display_sizes.clear();
     for (const auto &[width, height] : _world->ListDisplaySizes()) { _display_sizes.push_back({width, height}); }

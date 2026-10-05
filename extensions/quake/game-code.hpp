@@ -199,6 +199,11 @@ namespace quake
     /// offers, and makes what the player never chose what it is now.
     void ReadVideo();
 
+    /// Writes the video settings where the engine reads them before it
+    /// shows its window, so that the game comes up as it was left and is
+    /// not seen to change, see VideoSettingsFile.
+    void WriteVideoSettings();
+
     /// Shows the window as the video settings say: its mode, its size, and
     /// whether a frame waits for the screen. Only what differs from how it
     /// is shown is changed. The frame limit is asked for, and made so a
