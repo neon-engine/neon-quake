@@ -10,6 +10,14 @@ namespace quake
   ///
   /// Its locals are globals like any other, `locals_count` cells from
   /// `first_local`, and its parameters are the first of them.
+  ///
+  /// `locals_count` can be smaller than the parameters. id's own qcc wrote
+  /// 0 for a function declared ahead of its body, as `SUB_AttackFinished`
+  /// is in id's progs.dat, while its parameters are still kept from
+  /// `first_local` on. Its temporaries after them are not counted either.
+  /// The original engine never looked at the number when it copied the
+  /// parameters, so a function's parameters are taken from `first_local`
+  /// on whatever `locals_count` says.
   struct ProgsFunction
   {
     /// The most parameters a function takes.

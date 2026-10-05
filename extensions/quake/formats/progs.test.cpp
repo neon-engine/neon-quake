@@ -288,9 +288,25 @@ namespace
     many.functions[1].parameters_count = 9;
     ExpectRefused(many.Build(), "takes 9 parameters");
 
+    // `main` keeps its locals from offset 28 of 30 globals
     ProgsBuilder large = MakeProgram();
     large.functions[1].parameter_sizes[0] = 3;
-    ExpectRefused(large.Build(), "parameters of 3 cells and only 1 locals");
+    ExpectRefused(large.Build(), "parameters of 3 cells from offset 28, outside the 30 globals");
+  }
+
+  TEST(ProgsTest, AcceptsAFunctionWithParametersAndNoLocalsAsIdsQccWroteIt)
+  {
+    // as SUB_AttackFinished is in id's progs.dat: declared ahead of its
+    // body, so its one parameter is not counted among its locals
+    ProgsBuilder builder = MakeProgram();
+    builder.functions[1].locals_count = 0;
+    const std::vector<std::uint8_t> bytes = builder.Build();
+
+    Progs progs;
+    std::string error;
+    ASSERT_TRUE(progs.Read(bytes, error)) << error;
+    EXPECT_EQ(progs.functions[1].locals_count, 0);
+    EXPECT_EQ(progs.functions[1].parameters_count, 1);
   }
 
   TEST(ProgsTest, AcceptsABuiltinThatTakesAnyNumberOfParameters)

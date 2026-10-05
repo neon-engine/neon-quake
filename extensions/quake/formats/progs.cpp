@@ -262,11 +262,14 @@ namespace quake
       {
         cells += function.parameter_sizes[static_cast<std::size_t>(parameter)];
       }
-      if (cells > function.locals_count)
+      // The parameters are not held to the locals: id's qcc counted none
+      // for a function declared ahead of its body (see ProgsFunction). They
+      // only have to be in the globals.
+      if (static_cast<std::int64_t>(function.first_local) + cells > h.globals_count)
       {
         error = std::format(
-          "Function {} ({}) has parameters of {} cells and only {} locals to keep them in",
-          i, name, cells, function.locals_count);
+          "Function {} ({}) has parameters of {} cells from offset {}, outside the {} globals",
+          i, name, cells, function.first_local, h.globals_count);
         return false;
       }
     }

@@ -420,15 +420,25 @@ namespace quake
     for (std::int32_t i = 0; i < parameters; i++)
     {
       const std::int32_t size = entered.parameter_sizes[static_cast<std::size_t>(i)];
-      if (size > parameter_size) { cells = entered.locals_count + 1; }
+      if (size > parameter_size)
+      {
+        return Fail(std::format(
+          "Parameter {} of function {} ({}) is {} cells, more than {}", i, function, name, size, parameter_size));
+      }
       cells += size;
     }
-    if (cells > entered.locals_count)
+
+    // What a call puts aside is its locals, or its parameters where they are
+    // more: id's qcc counted no locals for a function declared ahead of its
+    // body (see ProgsFunction), and its parameter has to survive a call of
+    // the same function further in all the same.
+    const std::int32_t kept = std::max(entered.locals_count, cells);
+    if (!HasGlobals(entered.first_local, kept))
     {
-      return Fail(std::format("The parameters of function {} ({}) do not fit its locals", function, name));
+      return Fail(std::format("The parameters of function {} ({}) are outside the globals", function, name));
     }
 
-    const auto locals = static_cast<std::size_t>(entered.locals_count);
+    const auto locals = static_cast<std::size_t>(kept);
     if (_saved_locals.size() + locals > _limits.saved_locals)
     {
       return Fail(std::format(
@@ -445,7 +455,7 @@ namespace quake
       .return_statement = return_statement,
       .saved_locals_at = _saved_locals.size(),
     });
-    _saved_locals.insert(_saved_locals.end(), first_local, first_local + entered.locals_count);
+    _saved_locals.insert(_saved_locals.end(), first_local, first_local + kept);
 
     // the parameters of the call become the first locals, one after another
     // without the gaps the parameter globals have

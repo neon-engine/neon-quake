@@ -777,8 +777,9 @@ namespace
   }
 
   /// Adds `float(float n) factorial`, which calls itself, and gives its
-  /// number. `n` is the global of its parameter.
-  std::int32_t AddFactorial(ProgsBuilder &builder, std::uint16_t &n)
+  /// number. `n` is the global of its parameter. Its locals are counted as
+  /// `locals_count` says, 3 when it is not said.
+  std::int32_t AddFactorial(ProgsBuilder &builder, std::uint16_t &n, const std::int32_t locals_count = 3)
   {
     // if (n <= 1) return 1; return n * factorial(n - 1);
     const std::uint16_t one = builder.Float(1.0f);
@@ -794,7 +795,22 @@ namespace
     // `n` is read after the call that set it to something smaller
     builder.Emit(ProgsOpcode::MulF, n, returned, result);
     builder.Emit(ProgsOpcode::Return, result);
-    return builder.Function("factorial", start, n, 3, {1});
+    return builder.Function("factorial", start, n, locals_count, {1});
+  }
+
+  TEST(QcMachineTest, KeepsTheParameterOfAFunctionWithNoLocalsAsIdsQccWroteIt)
+  {
+    // id's qcc counted no locals for a function declared ahead of its body;
+    // its parameter is still put aside and given back around a call of the
+    // same function, or factorial would multiply by what n became further in
+    ProgsBuilder builder;
+    std::uint16_t n = 0;
+    AddFactorial(builder, n, 0);
+    QcMachine machine = MakeMachine(builder);
+
+    machine.SetParameterFloat(0, 5.0f);
+    ASSERT_TRUE(machine.Call("factorial")) << machine.GetError().message;
+    EXPECT_EQ(machine.GetReturnFloat(), 120.0f);
   }
 
   TEST(QcMachineTest, WorksOutAFactorialWithAFunctionThatCallsItself)
@@ -1405,6 +1421,6 @@ namespace
     EXPECT_FALSE(machine.Call(2));
     EXPECT_THAT(machine.GetError().message, HasSubstr("went to statement 50"));
     EXPECT_FALSE(machine.Call(3));
-    EXPECT_THAT(machine.GetError().message, HasSubstr("parameters of function 3 () do not fit its locals"));
+    EXPECT_THAT(machine.GetError().message, HasSubstr("Parameter 0 of function 3 () is 200 cells, more than 3"));
   }
 }
