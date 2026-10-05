@@ -222,6 +222,31 @@ The code is written for this repository, in the conventions of Neon Engine,
 see its [style guide](../neon-engine/docs/style-guide.md). Other source ports
 are read to understand the formats, and nothing is copied from them.
 
+## Licence
+
+neon-quake is free software: you can redistribute it and modify it under the
+terms of the GNU General Public License as published by the Free Software
+Foundation, either version 2 of the License, or (at your option) any later
+version. It comes without any warranty. The text of the licence is in
+[LICENSE.txt](LICENSE.txt), which is the file vkQuake carries, as it is.
+These are the terms id Software released the source of Quake under, and the
+terms of vkQuake and the other source ports that are read here.
+
+What that covers and what it does not:
+
+- **The game, this repository**: the extension, its shaders, its tools, and
+  the files of its project.
+- **Not the engine.** The game is a library of its own, `quake-<system>`,
+  which NeonRuntime loads when it starts and talks to through the functions
+  of `neon-extension.h` alone. Nothing of the engine is compiled into the
+  game, and nothing of the game into the engine. Neon Engine has its own
+  licence.
+- **Not the data of a game.** `id1` is the player's own copy, of Quake or of
+  LibreQuake, under the licence it came with, and is never part of this
+  repository.
+- **The pictures of buttons** in `extensions/quake/assets/prompts/`, when
+  they are there, are by Kenney and in the public domain (CC0).
+
 ## Order of work
 
 From the engine's issue #287: the pak files as a scheme of the file system
