@@ -59,6 +59,14 @@ namespace quake
 
     HudAnchor anchor = HudAnchor::Bottom;
 
+    /// For a picture, the rows of it that are drawn, when not all of it
+    /// is: from row `first_row`, counted from its top, so many `rows`. 0
+    /// rows is every row from the first on. The upper left corner of the
+    /// strip is what goes at `x`, `y`. A menu leaves an item out of a
+    /// picture of several this way.
+    std::int32_t first_row = 0;
+    std::int32_t rows = 0;
+
     bool operator==(const HudPicture &) const = default;
   };
 } // quake

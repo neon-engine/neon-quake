@@ -427,29 +427,50 @@ namespace
     EXPECT_EQ(StatusBarOptions::SizeOfViewSize(120.0f), StatusBarSize::None);
   }
 
-  TEST(StatusBarTest, GivesItsPlaceToTheScoreboardWhenAskedAndForADeadPlayer)
+  TEST(StatusBarTest, ShowsTheScoreboardInTheMiddleWhenAskedAndKeepsTheBar)
   {
     const StatusBar bar;
     PlayerStats stats = make_fresh_player();
     stats.level_name = "the Slipgate Complex";
     stats.time = 61.0f;
 
-    // whatever the size
-    const auto scores = Scoreboard::Layout(stats);
+    // over the view, in the middle of the screen, after the bar as it is
+    const auto scores = Scoreboard::Layout(stats, quake::HudAnchor::Center, Scoreboard::middle_top);
+    const auto plain = bar.Layout(stats, 61.0f, bar_only);
+    auto expected = plain;
+    expected.insert(expected.end(), scores.begin(), scores.end());
     EXPECT_THAT(
-      bar.Layout(stats, 61.0f, {.size = StatusBarSize::BarOnly, .shows_scores = true}), ElementsAreArray(scores));
+      bar.Layout(stats, 61.0f, {.size = StatusBarSize::BarOnly, .shows_scores = true}), ElementsAreArray(expected));
+    EXPECT_THAT(plain, Contains(MakePicture("sbar", 0, 176)));
+    EXPECT_EQ(scores.front(), MakePicture("scorebar", 0, 88, quake::HudAnchor::Center));
+
+    // without a bar the board is all there is
     EXPECT_THAT(
       bar.Layout(stats, 61.0f, {.size = StatusBarSize::None, .shows_scores = true}), ElementsAreArray(scores));
 
-    // with what is carried above it
+    // with what is carried above the bar
     const auto full = bar.Layout(stats, 61.0f, {.size = StatusBarSize::Full, .shows_scores = true});
     EXPECT_EQ(full.front(), MakePicture("ibar", 0, 152));
-    EXPECT_THAT(full, Contains(MakePicture("scorebar", 0, 176)));
-    EXPECT_THAT(full, Not(Contains(MakePicture("sbar", 0, 176))));
+    EXPECT_THAT(full, Contains(MakePicture("sbar", 0, 176)));
+    EXPECT_THAT(full, Contains(MakePicture("scorebar", 0, 88, quake::HudAnchor::Center)));
+  }
 
+  TEST(StatusBarTest, GivesItsPlaceToTheScoreboardForADeadPlayer)
+  {
+    const StatusBar bar;
+    PlayerStats stats = make_fresh_player();
+    stats.level_name = "the Slipgate Complex";
+    stats.time = 61.0f;
+
+    // at the lower edge, in place of the bar, as in the original
     stats.health = 0;
     EXPECT_THAT(bar.Layout(stats, 61.0f, bar_only), ElementsAreArray(Scoreboard::Layout(stats)));
     stats.health = -40;
     EXPECT_THAT(bar.Layout(stats, 61.0f, bar_only), ElementsAreArray(Scoreboard::Layout(stats)));
+
+    // and asking for it changes nothing then
+    EXPECT_THAT(
+      bar.Layout(stats, 61.0f, {.size = StatusBarSize::BarOnly, .shows_scores = true}),
+      ElementsAreArray(Scoreboard::Layout(stats)));
   }
 }

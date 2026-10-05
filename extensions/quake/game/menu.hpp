@@ -29,10 +29,8 @@ namespace quake
   /// long as IsOpen() says so.
   ///
   /// Left out of the original are the screens for the keys and the video
-  /// modes, the console, and all of multiplayer: its screen is there, as
-  /// the main menu leads to it, with the line the original shows when
-  /// there is no way to reach another machine, and nothing on it leads
-  /// further.
+  /// modes, the console, and all of multiplayer, which is not there yet
+  /// (#65): the main menu is drawn without its item.
   ///
   /// ```
   /// Menu menu;
@@ -46,10 +44,16 @@ namespace quake
   {
   public:
     /// How many items each screen has, and how many pages the help.
-    static constexpr std::int32_t main_items = 5;
+    static constexpr std::int32_t main_items = 4;
     static constexpr std::int32_t single_player_items = 3;
-    static constexpr std::int32_t multiplayer_items = 3;
+    /// The settings, and after them the item that leads to the video
+    /// settings.
     static constexpr std::int32_t option_items = 8;
+    static constexpr std::int32_t option_rows_shown = option_items + 1;
+
+    /// The mode of the window, its size, vertical sync, and the most frames
+    /// a second.
+    static constexpr std::int32_t video_items = 4;
     static constexpr std::int32_t help_pages = 6;
 
     /// How many letters of what a saved game says about itself are
@@ -131,9 +135,9 @@ namespace quake
     /// The screens to load and to save share one, as in the original.
     std::int32_t _main_cursor = 0;
     std::int32_t _single_player_cursor = 0;
-    std::int32_t _multiplayer_cursor = 0;
     std::int32_t _slot_cursor = 0;
     std::int32_t _options_cursor = 0;
+    std::int32_t _video_cursor = 0;
     std::int32_t _help_page = 0;
 
     /// Goes to a screen, with the sound of it.
@@ -143,14 +147,20 @@ namespace quake
     std::vector<MenuAction> PressOnSinglePlayer(MenuKey key, const MenuGame &game);
     std::vector<MenuAction> PressOnNewGame(MenuKey key);
     std::vector<MenuAction> PressOnSlots(MenuKey key, const MenuGame &game);
-    std::vector<MenuAction> PressOnMultiplayer(MenuKey key);
     std::vector<MenuAction> PressOnOptions(MenuKey key, const MenuOptions &options);
+    std::vector<MenuAction> PressOnVideo(MenuKey key, const MenuOptions &options, const MenuGame &game);
     std::vector<MenuAction> PressOnHelp(MenuKey key);
     std::vector<MenuAction> PressOnQuit(MenuKey key);
 
     /// The option under the cursor, one step up or down, or turned over
     /// when it is on or off.
     void ChangeOption(std::int32_t direction, const MenuOptions &options, std::vector<MenuAction> &actions) const;
+
+    /// The main menu: the plaque, the title, the picture of its items
+    /// without the one of multiplayer, and the cursor. The picture holds
+    /// all five, so it is drawn as two strips, the first item and what
+    /// comes after the second, moved up to where the second was.
+    static void AddMain(std::vector<HudPicture> &pictures, std::int32_t title_width, std::int32_t cursor, double time);
 
     /// A screen of the kind of the main menu: the plaque on the left, the
     /// title on top, the picture of the items, and the cursor that turns
@@ -162,6 +172,12 @@ namespace quake
       std::string_view items,
       std::int32_t cursor,
       double time);
+
+    void AddVideo(
+      std::vector<HudPicture> &pictures,
+      const MenuOptions &options,
+      std::int32_t title_width,
+      double time) const;
 
     void AddSlots(
       std::vector<HudPicture> &pictures,

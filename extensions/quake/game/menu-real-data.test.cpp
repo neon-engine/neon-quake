@@ -121,9 +121,9 @@ namespace
 
     const Walk walk;
 
-    // the plaque, 6 titles, 3 pictures of items, 6 of the cursor, 6 pages
+    // the plaque, 5 titles, 2 pictures of items, 6 of the cursor, 6 pages
     // of help, 10 pieces of the box, the pause, and the letters
-    EXPECT_EQ(walk.pictures.size(), 34u);
+    EXPECT_EQ(walk.pictures.size(), 32u);
     for (const std::string &name : walk.pictures)
     {
       Picture picture;

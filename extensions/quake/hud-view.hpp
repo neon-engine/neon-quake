@@ -96,7 +96,14 @@ namespace quake
     /// top, which are drawn smaller than the rest, as a console is.
     static constexpr float notice_height = 540.0f;
 
-    const Known &Find(const neon::extension::World &world, const GameData &data, std::string_view name);
+    /// A picture, or the rows of it that are asked for: all of it for 0
+    /// rows from row 0, see HudPicture.
+    const Known &Find(
+      const neon::extension::World &world,
+      const GameData &data,
+      std::string_view name,
+      std::int32_t first_row = 0,
+      std::int32_t rows = 0);
 
     const std::string &FindLetter(const neon::extension::World &world, const GameData &data, std::int32_t letter);
 

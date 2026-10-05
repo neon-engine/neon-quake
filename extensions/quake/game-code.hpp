@@ -16,6 +16,7 @@
 #include "formats/qc-machine.hpp"
 #include "game-data.hpp"
 #include "hud-view.hpp"
+#include "game/frame-limit-delay.hpp"
 #include "game/level-collision.hpp"
 #include "game/level-physics.hpp"
 #include "game/level-running.hpp"
@@ -194,6 +195,20 @@ namespace quake
     /// player, see SteerPlayer().
     void ReadScriptedImpulses();
 
+    /// Reads how the window is shown now and which sizes its display
+    /// offers, and makes what the player never chose what it is now.
+    void ReadVideo();
+
+    /// Shows the window as the video settings say: its mode, its size, and
+    /// whether a frame waits for the screen. Only what differs from how it
+    /// is shown is changed. The frame limit is asked for, and made so five
+    /// seconds after it was asked for last, see FrameLimitDelay.
+    void ApplyVideo();
+
+    /// The frame limit the options say, as the engine takes it: 0 for
+    /// none, or a number from 30 to 300.
+    [[nodiscard]] static int FrameLimitOf(const MenuOptions &options);
+
     /// Adds the pictures of the menu to a list, while it is open.
     void AddMenu(std::vector<HudPicture> &pictures);
 
@@ -303,6 +318,18 @@ namespace quake
 
     // impulses the environment asked for, which are given one in a step
     std::vector<float> _scripted_impulses;
+
+    // the sizes the display offers, and how the window is shown now
+    std::vector<MenuSize> _display_sizes;
+    int _shown_window_mode = 0;
+    int _shown_window_width = 0;
+    int _shown_window_height = 0;
+    bool _shown_vertical_sync = true;
+
+    // the frame limit that waits for its slider to be left alone, and the
+    // time it is counted in: the seconds of every frame since the start
+    FrameLimitDelay _frame_limit_delay;
+    double _played_time = 0.0;
 
     // whether the camera is told the effect of a view in a liquid, and
     // whether it was told anything yet

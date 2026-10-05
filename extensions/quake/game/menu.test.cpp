@@ -153,17 +153,20 @@ namespace
 
   // ---- the main menu
 
-  TEST(MenuTest, LaysOutTheMainMenuWithTheCursorOnEachItem)
+  // The picture of the items holds multiplayer too, which is not there yet:
+  // its first item is drawn, and what comes after the second in its place.
+  TEST(MenuTest, LaysOutTheMainMenuWithoutMultiplayerAndTheCursorOnEachItem)
   {
     Menu menu;
     menu.Open();
-    for (int item = 0; item < 5; item++)
+    for (int item = 0; item < 4; item++)
     {
       EXPECT_EQ(menu.GetCursor(), item);
       EXPECT_THAT(menu.Layout(0.0), ElementsAre(
         MakePicture("gfx/qplaque.lmp", 16, 4, center),
         MakePicture("gfx/ttl_main.lmp", 112, 4, center),
-        MakePicture("gfx/mainmenu.lmp", 72, 32, center),
+        MakeStrip("gfx/mainmenu.lmp", 72, 32, 0, 20, center),
+        MakeStrip("gfx/mainmenu.lmp", 72, 52, 40, 0, center),
         MakePicture("gfx/menudot1.lmp", 54, 32 + item * 20, center))) << item;
 
       EXPECT_THAT(menu.Press(MenuKey::Down), ElementsAre(move_sound));
@@ -172,9 +175,9 @@ namespace
     // around, to the first
     EXPECT_EQ(menu.GetCursor(), 0);
     EXPECT_THAT(menu.Press(MenuKey::Up), ElementsAre(move_sound));
-    EXPECT_EQ(menu.GetCursor(), 4);
-    EXPECT_THAT(menu.Press(MenuKey::Up), ElementsAre(move_sound));
     EXPECT_EQ(menu.GetCursor(), 3);
+    EXPECT_THAT(menu.Press(MenuKey::Up), ElementsAre(move_sound));
+    EXPECT_EQ(menu.GetCursor(), 2);
   }
 
   TEST(MenuTest, TurnsTheCursorSixPicturesAtTenASecond)
@@ -204,15 +207,13 @@ namespace
     MenuTitleWidths widths;
     widths.main = 156;
     widths.single_player = 70;
-    widths.multiplayer = 100;
     widths.load = 72;
     widths.save = 74;
     widths.options = 114;
 
     EXPECT_EQ(make_menu_at(0).Layout(0.0, {}, {}, widths)[1], MakePicture("gfx/ttl_main.lmp", 82, 4, center));
     EXPECT_EQ(make_menu_in(0).Layout(0.0, {}, {}, widths)[1], MakePicture("gfx/ttl_sgl.lmp", 125, 4, center));
-    EXPECT_EQ(make_menu_in(1).Layout(0.0, {}, {}, widths)[1], MakePicture("gfx/p_multi.lmp", 110, 4, center));
-    EXPECT_EQ(make_menu_in(2).Layout(0.0, {}, {}, widths)[1], MakePicture("gfx/p_option.lmp", 103, 4, center));
+    EXPECT_EQ(make_menu_in(1).Layout(0.0, {}, {}, widths)[1], MakePicture("gfx/p_option.lmp", 103, 4, center));
     EXPECT_EQ(
       make_menu_in_single_player(1).Layout(0.0, {}, {}, widths)[0], MakePicture("gfx/p_load.lmp", 124, 4, center));
     EXPECT_EQ(
@@ -222,9 +223,9 @@ namespace
   TEST(MenuTest, GoesFromTheMainMenuIntoEachScreen)
   {
     constexpr MenuScreen screens[] = {
-      MenuScreen::SinglePlayer, MenuScreen::Multiplayer, MenuScreen::Options, MenuScreen::Help, MenuScreen::Quit,
+      MenuScreen::SinglePlayer, MenuScreen::Options, MenuScreen::Help, MenuScreen::Quit,
     };
-    for (int item = 0; item < 5; item++)
+    for (int item = 0; item < 4; item++)
     {
       Menu menu = make_menu_at(item);
       EXPECT_THAT(menu.Press(MenuKey::Select), ElementsAre(enter_sound)) << item;
@@ -448,36 +449,6 @@ namespace
     EXPECT_FALSE(menu.IsOpen());
   }
 
-  // ---- multiplayer
-
-  TEST(MenuTest, ShowsMultiplayerWithTheLineThatNothingIsThere)
-  {
-    Menu menu = make_menu_in(1);
-    EXPECT_THAT(menu.Press(MenuKey::Down), ElementsAre(move_sound));
-
-    std::vector<HudPicture> expected = {
-      MakePicture("gfx/qplaque.lmp", 16, 4, center),
-      MakePicture("gfx/p_multi.lmp", 52, 4, center),
-      MakePicture("gfx/mp_menu.lmp", 72, 32, center),
-      MakePicture("gfx/menudot1.lmp", 54, 52, center),
-    };
-    append(expected, MakeLetters("No Communications Available", 52, 148, center));
-    EXPECT_THAT(menu.Layout(0.0), ElementsAreArray(expected));
-
-    // nothing on it leads anywhere
-    EXPECT_THAT(menu.Press(MenuKey::Select), ElementsAre(enter_sound));
-    EXPECT_EQ(menu.GetScreen(), MenuScreen::Multiplayer);
-
-    menu.Press(MenuKey::Down);
-    menu.Press(MenuKey::Down);
-    EXPECT_EQ(menu.GetCursor(), 0);
-    menu.Press(MenuKey::Up);
-    EXPECT_EQ(menu.GetCursor(), 2);
-
-    EXPECT_THAT(menu.Press(MenuKey::Back), ElementsAre(enter_sound));
-    EXPECT_EQ(menu.GetScreen(), MenuScreen::Main);
-  }
-
   // ---- options
 
   TEST(MenuTest, LaysOutTheOptionsWithSlidersAndWords)
@@ -490,7 +461,7 @@ namespace
     options.sound_volume = 1.0f;
     options.invert_mouse = true;
 
-    Menu menu = make_menu_in(2);
+    Menu menu = make_menu_in(1);
     menu.Press(MenuKey::Down, options);
 
     const auto make_slider = [](const std::int32_t y, const std::int32_t knob)
@@ -522,6 +493,7 @@ namespace
     append(expected, make_bronze_letters("on", 220, 80));
     append(expected, make_bronze_letters("Stick Speed", 104, 88));
     append(expected, make_slider(88, 234));
+    append(expected, make_bronze_letters("Video Options", 88, 96));
     expected.push_back(MakeLetter(12, 200, 40, center));
     EXPECT_THAT(menu.Layout(0.0, options), ElementsAreArray(expected));
 
@@ -530,7 +502,7 @@ namespace
 
   TEST(MenuTest, PutsTheKnobOfASliderAtItsEndsAndItsMiddle)
   {
-    const Menu menu = make_menu_in(2);
+    const Menu menu = make_menu_in(1);
     const auto knob_of_size = [&](const float size)
     {
       MenuOptions options;
@@ -555,11 +527,11 @@ namespace
     EXPECT_EQ(find_knob(menu.Layout(0.0, options), 40), 292);
   }
 
-  TEST(MenuTest, MovesAroundTheEightOptions)
+  TEST(MenuTest, MovesAroundTheEightOptionsAndTheItemOfTheVideoSettings)
   {
-    Menu menu = make_menu_in(2);
+    Menu menu = make_menu_in(1);
     EXPECT_THAT(menu.Press(MenuKey::Up), ElementsAre(move_sound));
-    EXPECT_EQ(menu.GetCursor(), 7);
+    EXPECT_EQ(menu.GetCursor(), 8);
     EXPECT_THAT(menu.Press(MenuKey::Down), ElementsAre(move_sound));
     EXPECT_EQ(menu.GetCursor(), 0);
 
@@ -591,7 +563,7 @@ namespace
       {"volume", 0.7f, 0.8f, 0.6f, 1.0f, 0.0f},
     };
 
-    Menu menu = make_menu_in(2);
+    Menu menu = make_menu_in(1);
     for (const Row &row : rows)
     {
       MenuOptions options;
@@ -624,7 +596,7 @@ namespace
   {
     constexpr int steps[] = {9, 10, 20, 10, 10};
 
-    Menu menu = make_menu_in(2);
+    Menu menu = make_menu_in(1);
     for (int row = 0; row < 5; row++)
     {
       MenuOptions options;
@@ -650,7 +622,7 @@ namespace
 
   TEST(MenuTest, TurnsAnOptionOverWithEitherArrowAndWithSelect)
   {
-    Menu menu = make_menu_in(2);
+    Menu menu = make_menu_in(1);
     for (int i = 0; i < 5; i++) { menu.Press(MenuKey::Down); }
 
     MenuOptions options;
@@ -671,6 +643,208 @@ namespace
     EXPECT_THAT(
       menu.Press(MenuKey::Select, options),
       ElementsAre(change_sound, set_option("joy_sensitivity", 3.5f), enter_sound));
+  }
+
+  // ---- video
+
+  /// A menu on the screen of the video settings.
+  Menu make_menu_in_video()
+  {
+    Menu menu = make_menu_in(1);
+    menu.Press(MenuKey::Up);
+    menu.Press(MenuKey::Select);
+    return menu;
+  }
+
+  /// A display that offers three sizes, the largest first.
+  MenuGame make_game_with_display()
+  {
+    MenuGame game;
+    game.display_sizes = {{3840, 2160}, {1920, 1080}, {1280, 720}};
+    return game;
+  }
+
+  TEST(MenuTest, TheLastItemOfTheOptionsLeadsToTheVideoSettingsAndBackLeadsToTheOptions)
+  {
+    Menu menu = make_menu_in(1);
+    menu.Press(MenuKey::Up);
+
+    // it has no value to change
+    EXPECT_THAT(menu.Press(MenuKey::Left), IsEmpty());
+    EXPECT_THAT(menu.Press(MenuKey::Right), IsEmpty());
+
+    EXPECT_THAT(menu.Press(MenuKey::Select), ElementsAre(enter_sound));
+    EXPECT_EQ(menu.GetScreen(), MenuScreen::Video);
+    EXPECT_EQ(menu.GetCursor(), 0);
+
+    EXPECT_THAT(menu.Press(MenuKey::Back), ElementsAre(enter_sound));
+    EXPECT_EQ(menu.GetScreen(), MenuScreen::Options);
+    EXPECT_EQ(menu.GetCursor(), 8) << "where it was left";
+  }
+
+  TEST(MenuTest, MovesAroundTheFourVideoSettings)
+  {
+    Menu menu = make_menu_in_video();
+    EXPECT_THAT(menu.Press(MenuKey::Up), ElementsAre(move_sound));
+    EXPECT_EQ(menu.GetCursor(), 3);
+    EXPECT_THAT(menu.Press(MenuKey::Down), ElementsAre(move_sound));
+    EXPECT_EQ(menu.GetCursor(), 0);
+  }
+
+  TEST(MenuTest, GoesThroughTheModesOfTheWindowAndAround)
+  {
+    Menu menu = make_menu_in_video();
+    MenuOptions options;
+    options.window_mode = 0.0f;
+
+    EXPECT_THAT(menu.Press(MenuKey::Right, options), ElementsAre(change_sound, set_option("vid_mode", 1.0f)));
+    options.window_mode = 2.0f;
+    EXPECT_THAT(menu.Press(MenuKey::Right, options), ElementsAre(change_sound, set_option("vid_mode", 0.0f)));
+    options.window_mode = 0.0f;
+    EXPECT_THAT(menu.Press(MenuKey::Left, options), ElementsAre(change_sound, set_option("vid_mode", 2.0f)));
+
+    // enter is a step to the right, with its own sound after
+    EXPECT_THAT(
+      menu.Press(MenuKey::Select, options), ElementsAre(change_sound, set_option("vid_mode", 1.0f), enter_sound));
+  }
+
+  TEST(MenuTest, GoesThroughTheSizesTheDisplayOffersAndStopsAtItsEnds)
+  {
+    Menu menu = make_menu_in_video();
+    menu.Press(MenuKey::Down);
+    const MenuGame game = make_game_with_display();
+    MenuOptions options;
+    options.window_width = 1920.0f;
+    options.window_height = 1080.0f;
+
+    // to the right is larger
+    EXPECT_THAT(
+      menu.Press(MenuKey::Right, options, game),
+      ElementsAre(change_sound, set_option("vid_width", 3840.0f), set_option("vid_height", 2160.0f)));
+    EXPECT_THAT(
+      menu.Press(MenuKey::Left, options, game),
+      ElementsAre(change_sound, set_option("vid_width", 1280.0f), set_option("vid_height", 720.0f)));
+
+    // at the largest it stays
+    options.window_width = 3840.0f;
+    options.window_height = 2160.0f;
+    EXPECT_THAT(
+      menu.Press(MenuKey::Right, options, game),
+      ElementsAre(change_sound, set_option("vid_width", 3840.0f), set_option("vid_height", 2160.0f)));
+
+    // a size the display does not offer goes to the largest
+    options.window_width = 1000.0f;
+    options.window_height = 700.0f;
+    EXPECT_THAT(
+      menu.Press(MenuKey::Left, options, game),
+      ElementsAre(change_sound, set_option("vid_width", 3840.0f), set_option("vid_height", 2160.0f)));
+
+    // and without a display there is nothing to choose
+    EXPECT_THAT(menu.Press(MenuKey::Right, options), ElementsAre(change_sound));
+  }
+
+  TEST(MenuTest, TurnsVerticalSyncOver)
+  {
+    Menu menu = make_menu_in_video();
+    menu.Press(MenuKey::Down);
+    menu.Press(MenuKey::Down);
+    MenuOptions options;
+
+    EXPECT_THAT(menu.Press(MenuKey::Right, options), ElementsAre(change_sound, set_option("vid_vsync", 1.0f)));
+    options.vertical_sync = true;
+    EXPECT_THAT(menu.Press(MenuKey::Left, options), ElementsAre(change_sound, set_option("vid_vsync", 0.0f)));
+  }
+
+  TEST(MenuTest, SlidesTheFrameLimitInTensFromThirtyToThreeHundredAndThenToNone)
+  {
+    Menu menu = make_menu_in_video();
+    menu.Press(MenuKey::Up);
+    MenuOptions options;
+
+    options.frame_limit = 60.0f;
+    EXPECT_THAT(menu.Press(MenuKey::Right, options), ElementsAre(change_sound, set_option("vid_maxfps", 70.0f)));
+    EXPECT_THAT(menu.Press(MenuKey::Left, options), ElementsAre(change_sound, set_option("vid_maxfps", 50.0f)));
+
+    // it stops at the least
+    options.frame_limit = 30.0f;
+    EXPECT_THAT(menu.Press(MenuKey::Left, options), ElementsAre(change_sound, set_option("vid_maxfps", 30.0f)));
+
+    // past the most there is no limit, which is 0, and where it stops
+    options.frame_limit = 300.0f;
+    EXPECT_THAT(menu.Press(MenuKey::Right, options), ElementsAre(change_sound, set_option("vid_maxfps", 0.0f)));
+    options.frame_limit = 0.0f;
+    EXPECT_THAT(menu.Press(MenuKey::Right, options), ElementsAre(change_sound, set_option("vid_maxfps", 0.0f)));
+    EXPECT_THAT(menu.Press(MenuKey::Left, options), ElementsAre(change_sound, set_option("vid_maxfps", 300.0f)));
+
+    // a number between two places goes on from the nearest
+    options.frame_limit = 144.0f;
+    EXPECT_THAT(menu.Press(MenuKey::Right, options), ElementsAre(change_sound, set_option("vid_maxfps", 150.0f)));
+  }
+
+  TEST(MenuTest, LaysOutTheVideoSettingsWithTheirWords)
+  {
+    Menu menu = make_menu_in_video();
+    MenuOptions options;
+    options.window_mode = 2.0f;
+    options.window_width = 1920.0f;
+    options.window_height = 1080.0f;
+    options.vertical_sync = true;
+
+    std::vector<HudPicture> expected = {
+      MakePicture("gfx/qplaque.lmp", 16, 4, center),
+      MakePicture("gfx/p_option.lmp", 88, 4, center),
+    };
+    append(expected, make_bronze_letters("Video Mode", 112, 32));
+    append(expected, make_bronze_letters("fullscreen", 220, 32));
+    append(expected, make_bronze_letters("Resolution", 112, 40));
+    append(expected, make_bronze_letters("1920x1080", 220, 40));
+    append(expected, make_bronze_letters("Vertical Sync", 88, 48));
+    append(expected, make_bronze_letters("on", 220, 48));
+
+    // the limit with its name, and a slider of ten letters between its
+    // ends with the knob a ninth of the way along 72 pixels: 30 of 30 to
+    // 300 and none is the first of 29 places, 60 the fourth
+    options.frame_limit = 60.0f;
+    append(expected, make_bronze_letters("Max FPS 60", 112, 56));
+    expected.push_back(MakeLetter(128, 212, 56, center));
+    for (std::int32_t i = 0; i < 10; i++) { expected.push_back(MakeLetter(129, 220 + i * 8, 56, center)); }
+    expected.push_back(MakeLetter(130, 300, 56, center));
+    expected.push_back(MakeLetter(131, 220 + 72 * 3 / 28, 56, center));
+
+    expected.push_back(MakeLetter(12, 200, 32, center));
+    EXPECT_THAT(menu.Layout(0.0, options), ElementsAreArray(expected));
+
+    // no limit says so, with the knob at the right end
+    options.frame_limit = 0.0f;
+    const std::vector<HudPicture> unlimited = menu.Layout(0.0, options);
+    const std::vector<HudPicture> said = make_bronze_letters("Max FPS unlimited", 56, 56);
+    EXPECT_TRUE(std::ranges::search(unlimited, said).begin() != unlimited.end());
+    EXPECT_THAT(unlimited, ::testing::Contains(MakeLetter(131, 220 + 72, 56, center)));
+
+    // a size that was never chosen says so
+    options.window_width = 0.0f;
+    const std::vector<HudPicture> unset = menu.Layout(0.0, options);
+    const std::vector<HudPicture> words = make_bronze_letters("as started", 220, 40);
+    EXPECT_TRUE(std::ranges::search(unset, words).begin() != unset.end());
+  }
+
+  TEST(MenuOptionsTest, SetsTheVideoSettingsByTheirNames)
+  {
+    MenuOptions options;
+    EXPECT_LT(options.window_mode, 0.0f) << "as the game was started, until the host says which that is";
+    EXPECT_FALSE(options.vertical_sync);
+
+    EXPECT_TRUE(options.Set("vid_mode", 2.0f));
+    EXPECT_TRUE(options.Set("vid_width", 1280.0f));
+    EXPECT_TRUE(options.Set("vid_height", 720.0f));
+    EXPECT_TRUE(options.Set("vid_vsync", 1.0f));
+    EXPECT_TRUE(options.Set("vid_maxfps", 144.0f));
+    EXPECT_EQ(options.frame_limit, 144.0f);
+
+    EXPECT_EQ(options.window_mode, 2.0f);
+    EXPECT_EQ(options.window_width, 1280.0f);
+    EXPECT_EQ(options.window_height, 720.0f);
+    EXPECT_TRUE(options.vertical_sync);
   }
 
   TEST(MenuOptionsTest, SetsAnOptionByItsName)
@@ -700,7 +874,7 @@ namespace
 
   TEST(MenuTest, TurnsTheSixPagesOfHelpBothWaysAround)
   {
-    Menu menu = make_menu_in(3);
+    Menu menu = make_menu_in(2);
     EXPECT_THAT(menu.Layout(5.0), ElementsAre(MakePicture("gfx/help0.lmp", 0, 0, center)));
 
     EXPECT_THAT(menu.Press(MenuKey::Right), ElementsAre(enter_sound));
@@ -730,14 +904,15 @@ namespace
 
   TEST(MenuTest, AsksInABoxOverTheMainMenuBeforeItQuits)
   {
-    Menu menu = make_menu_in(4);
+    Menu menu = make_menu_in(3);
     ASSERT_EQ(menu.GetScreen(), MenuScreen::Quit);
 
     std::vector<HudPicture> expected = {
       MakePicture("gfx/qplaque.lmp", 16, 4, center),
       MakePicture("gfx/ttl_main.lmp", 112, 4, center),
-      MakePicture("gfx/mainmenu.lmp", 72, 32, center),
-      MakePicture("gfx/menudot1.lmp", 54, 112, center),
+      MakeStrip("gfx/mainmenu.lmp", 72, 32, 0, 20, center),
+      MakeStrip("gfx/mainmenu.lmp", 72, 52, 40, 0, center),
+      MakePicture("gfx/menudot1.lmp", 54, 92, center),
 
       // the box: its left side, twelve pieces of the middle, its right
       MakePicture("gfx/box_tl.lmp", 56, 76, center),
@@ -774,19 +949,19 @@ namespace
   {
     for (const MenuKey no : {MenuKey::No, MenuKey::Back})
     {
-      Menu menu = make_menu_in(4);
+      Menu menu = make_menu_in(3);
       EXPECT_THAT(menu.Press(no), ElementsAre(enter_sound));
       EXPECT_EQ(menu.GetScreen(), MenuScreen::Main);
-      EXPECT_EQ(menu.GetCursor(), 4);
+      EXPECT_EQ(menu.GetCursor(), 3);
     }
 
     for (const MenuKey yes : {MenuKey::Yes, MenuKey::Select})
     {
-      Menu menu = make_menu_in(4);
+      Menu menu = make_menu_in(3);
       EXPECT_THAT(menu.Press(yes), ElementsAre(quit));
     }
 
-    Menu menu = make_menu_in(4);
+    Menu menu = make_menu_in(3);
     for (const MenuKey key : {MenuKey::Up, MenuKey::Down, MenuKey::Left, MenuKey::Right})
     {
       EXPECT_THAT(menu.Press(key), IsEmpty());
@@ -815,7 +990,7 @@ namespace
     }
 
     // from each screen of the main menu
-    for (int item = 0; item < 5; item++)
+    for (int item = 0; item < 4; item++)
     {
       Menu menu = make_menu_in(item);
       menu.Press(MenuKey::Back);

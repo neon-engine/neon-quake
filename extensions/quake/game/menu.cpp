@@ -45,6 +45,9 @@ namespace quake
     constexpr std::int32_t option_cursor_x = 200;
     constexpr std::int32_t option_value_x = 220;
 
+    /// The item of the settings that leads to the video settings.
+    constexpr std::string_view video_label = "Video Options";
+
     constexpr std::array<std::string_view, 6> cursor_names = {
       "gfx/menudot1.lmp", "gfx/menudot2.lmp", "gfx/menudot3.lmp",
       "gfx/menudot4.lmp", "gfx/menudot5.lmp", "gfx/menudot6.lmp",
@@ -65,7 +68,6 @@ namespace quake
     };
 
     constexpr std::string_view new_game_question = "Are you sure you want to\nstart a new game?";
-    constexpr std::string_view no_multiplayer = "No Communications Available";
 
     /// One row of the options screen. A slider goes from `least` to
     /// `most` in steps of `step`. With `least` above `most` its number
@@ -170,6 +172,33 @@ namespace quake
       }
     }
 
+    /// The places the slider of the frame limit has: one for every ten
+    /// frames a second from the least to the most, and one more at its
+    /// right end for no limit.
+    constexpr std::int32_t frame_limit_places =
+      static_cast<std::int32_t>(
+        (MenuOptions::most_frame_limit - MenuOptions::least_frame_limit) / MenuOptions::frame_limit_step) + 2;
+
+    /// The place of a frame limit on its slider. No limit, 0 and below, is
+    /// the last.
+    std::int32_t frame_limit_place(const float limit)
+    {
+      if (!(limit > 0.0f)) { return frame_limit_places - 1; }
+
+      const float held = std::clamp(limit, MenuOptions::least_frame_limit, MenuOptions::most_frame_limit);
+      return static_cast<std::int32_t>(
+        std::lround((held - MenuOptions::least_frame_limit) / MenuOptions::frame_limit_step));
+    }
+
+    /// The frame limit at a place of its slider, which stops at its ends.
+    float frame_limit_at(const std::int32_t place)
+    {
+      const std::int32_t held = std::clamp(place, 0, frame_limit_places - 1);
+      if (held == frame_limit_places - 1) { return 0.0f; }
+
+      return MenuOptions::least_frame_limit + static_cast<float>(held) * MenuOptions::frame_limit_step;
+    }
+
     /// A slider with its knob at a part of its way, from 0 to 1.
     void add_slider(std::vector<HudPicture> &pictures, const std::int32_t x, const std::int32_t y, float part)
     {
@@ -226,10 +255,10 @@ namespace quake
     {
     case MenuScreen::Main: return _main_cursor;
     case MenuScreen::SinglePlayer: return _single_player_cursor;
-    case MenuScreen::Multiplayer: return _multiplayer_cursor;
     case MenuScreen::Load:
     case MenuScreen::Save: return _slot_cursor;
     case MenuScreen::Options: return _options_cursor;
+    case MenuScreen::Video: return _video_cursor;
     case MenuScreen::Help: return _help_page;
     default: return 0;
     }
@@ -244,8 +273,8 @@ namespace quake
     case MenuScreen::NewGame: return PressOnNewGame(key);
     case MenuScreen::Load:
     case MenuScreen::Save: return PressOnSlots(key, game);
-    case MenuScreen::Multiplayer: return PressOnMultiplayer(key);
     case MenuScreen::Options: return PressOnOptions(key, options);
+    case MenuScreen::Video: return PressOnVideo(key, options, game);
     case MenuScreen::Help: return PressOnHelp(key);
     case MenuScreen::Quit: return PressOnQuit(key);
     default: return {};
@@ -281,7 +310,7 @@ namespace quake
     case MenuKey::Select:
     {
       constexpr std::array<MenuScreen, main_items> screens = {
-        MenuScreen::SinglePlayer, MenuScreen::Multiplayer, MenuScreen::Options, MenuScreen::Help, MenuScreen::Quit,
+        MenuScreen::SinglePlayer, MenuScreen::Options, MenuScreen::Help, MenuScreen::Quit,
       };
       const MenuScreen screen = screens[static_cast<std::size_t>(_main_cursor)];
 
@@ -396,36 +425,6 @@ namespace quake
     return actions;
   }
 
-  std::vector<MenuAction> Menu::PressOnMultiplayer(const MenuKey key)
-  {
-    std::vector<MenuAction> actions;
-    switch (key)
-    {
-    case MenuKey::Back:
-      Enter(MenuScreen::Main, actions);
-      break;
-
-    case MenuKey::Down:
-      _multiplayer_cursor = wrap(_multiplayer_cursor + 1, multiplayer_items);
-      actions.push_back(sound(MenuAction::move_sound));
-      break;
-
-    case MenuKey::Up:
-      _multiplayer_cursor = wrap(_multiplayer_cursor - 1, multiplayer_items);
-      actions.push_back(sound(MenuAction::move_sound));
-      break;
-
-    case MenuKey::Select:
-      // no item leads anywhere, and the original gives the sound still
-      actions.push_back(sound(MenuAction::enter_sound));
-      break;
-
-    default:
-      break;
-    }
-    return actions;
-  }
-
   std::vector<MenuAction> Menu::PressOnOptions(const MenuKey key, const MenuOptions &options)
   {
     std::vector<MenuAction> actions;
@@ -436,26 +435,123 @@ namespace quake
       break;
 
     case MenuKey::Up:
-      _options_cursor = wrap(_options_cursor - 1, option_items);
+      _options_cursor = wrap(_options_cursor - 1, option_rows_shown);
       actions.push_back(sound(MenuAction::move_sound));
       break;
 
     case MenuKey::Down:
-      _options_cursor = wrap(_options_cursor + 1, option_items);
+      _options_cursor = wrap(_options_cursor + 1, option_rows_shown);
       actions.push_back(sound(MenuAction::move_sound));
       break;
 
     case MenuKey::Left:
-      ChangeOption(-1, options, actions);
+      if (_options_cursor < option_items) { ChangeOption(-1, options, actions); }
       break;
 
     case MenuKey::Right:
-      ChangeOption(1, options, actions);
+      if (_options_cursor < option_items) { ChangeOption(1, options, actions); }
       break;
 
     case MenuKey::Select:
+      // the last item leads to the video settings
+      if (_options_cursor == option_items)
+      {
+        Enter(MenuScreen::Video, actions);
+        break;
+      }
+
       // enter is a step to the right, and gives its own sound after
       ChangeOption(1, options, actions);
+      actions.push_back(sound(MenuAction::enter_sound));
+      break;
+
+    default:
+      break;
+    }
+    return actions;
+  }
+
+  std::vector<MenuAction> Menu::PressOnVideo(const MenuKey key, const MenuOptions &options, const MenuGame &game)
+  {
+    std::vector<MenuAction> actions;
+    const auto set = [&actions](const std::string_view name, const float value)
+    {
+      actions.push_back({.kind = MenuActionKind::SetOption, .name = name, .value = value});
+    };
+
+    // a step to the right or to the left, as an arrow and enter ask
+    const auto change = [&](const std::int32_t direction)
+    {
+      // the sound comes also when nothing can change, as with a slider at
+      // its end
+      actions.push_back(sound(MenuAction::change_sound));
+
+      switch (_video_cursor)
+      {
+      case 0:
+      {
+        // window, without borders, the whole display, and around
+        const auto mode = static_cast<std::int32_t>(std::clamp(options.window_mode, 0.0f, 2.0f));
+        set(MenuOptions::window_mode_name, static_cast<float>(wrap(mode + direction, 3)));
+        break;
+      }
+      case 1:
+      {
+        // the sizes of the display, which come the largest first: to the
+        // right is larger
+        const std::vector<MenuSize> &sizes = game.display_sizes;
+        if (sizes.empty()) { break; }
+
+        const MenuSize now{
+          static_cast<std::int32_t>(options.window_width), static_cast<std::int32_t>(options.window_height)};
+        const auto found = std::ranges::find(sizes, now);
+
+        // a size the display does not offer goes to the largest
+        std::size_t index = 0;
+        if (found != sizes.end())
+        {
+          const auto at = static_cast<std::int32_t>(found - sizes.begin());
+          index = static_cast<std::size_t>(std::clamp(at - direction, 0, static_cast<std::int32_t>(sizes.size()) - 1));
+        }
+        set(MenuOptions::window_width_name, static_cast<float>(sizes[index].width));
+        set(MenuOptions::window_height_name, static_cast<float>(sizes[index].height));
+        break;
+      }
+      case 2:
+        set(MenuOptions::vertical_sync_name, options.vertical_sync ? 0.0f : 1.0f);
+        break;
+      default:
+        set(MenuOptions::frame_limit_name, frame_limit_at(frame_limit_place(options.frame_limit) + direction));
+        break;
+      }
+    };
+
+    switch (key)
+    {
+    case MenuKey::Back:
+      Enter(MenuScreen::Options, actions);
+      break;
+
+    case MenuKey::Up:
+      _video_cursor = wrap(_video_cursor - 1, video_items);
+      actions.push_back(sound(MenuAction::move_sound));
+      break;
+
+    case MenuKey::Down:
+      _video_cursor = wrap(_video_cursor + 1, video_items);
+      actions.push_back(sound(MenuAction::move_sound));
+      break;
+
+    case MenuKey::Left:
+      change(-1);
+      break;
+
+    case MenuKey::Right:
+      change(1);
+      break;
+
+    case MenuKey::Select:
+      change(1);
       actions.push_back(sound(MenuAction::enter_sound));
       break;
 
@@ -546,7 +642,7 @@ namespace quake
       break;
 
     case MenuScreen::Main:
-      AddPictureScreen(pictures, "gfx/ttl_main.lmp", widths.main, "gfx/mainmenu.lmp", _main_cursor, time);
+      AddMain(pictures, widths.main, _main_cursor, time);
       break;
 
     case MenuScreen::SinglePlayer:
@@ -566,19 +662,12 @@ namespace quake
       AddSlots(pictures, "gfx/p_save.lmp", widths.save, game, time);
       break;
 
-    case MenuScreen::Multiplayer:
-      AddPictureScreen(
-        pictures, "gfx/p_multi.lmp", widths.multiplayer, "gfx/mp_menu.lmp", _multiplayer_cursor, time);
-      HudText::AddLine(
-        pictures,
-        no_multiplayer,
-        (screen_width - static_cast<std::int32_t>(no_multiplayer.size()) * 8) / 2,
-        148,
-        anchor);
-      break;
-
     case MenuScreen::Options:
       AddOptions(pictures, options, widths.options, time);
+      break;
+
+    case MenuScreen::Video:
+      AddVideo(pictures, options, widths.options, time);
       break;
 
     case MenuScreen::Help:
@@ -587,7 +676,7 @@ namespace quake
 
     case MenuScreen::Quit:
       // over the main menu, which it came from
-      AddPictureScreen(pictures, "gfx/ttl_main.lmp", widths.main, "gfx/mainmenu.lmp", _main_cursor, time);
+      AddMain(pictures, widths.main, _main_cursor, time);
       AddTextBox(pictures, 56, 76, 24, 4);
       for (std::size_t i = 0; i < quit_lines.size(); i++)
       {
@@ -644,6 +733,43 @@ namespace quake
   std::vector<HudPicture> Menu::LayoutPause(const std::int32_t width, const std::int32_t height)
   {
     return {{.name = "gfx/pause.lmp", .x = (screen_width - width) / 2, .y = (200 - 48 - height) / 2, .anchor = anchor}};
+  }
+
+  void Menu::AddMain(
+    std::vector<HudPicture> &pictures,
+    const std::int32_t title_width,
+    const std::int32_t cursor,
+    const double time)
+  {
+    static constexpr std::string_view items = "gfx/mainmenu.lmp";
+
+    pictures.push_back({.name = "gfx/qplaque.lmp", .x = 16, .y = title_y, .anchor = anchor});
+    pictures.push_back({
+      .name = "gfx/ttl_main.lmp",
+      .x = (screen_width - title_width) / 2,
+      .y = title_y,
+      .anchor = anchor,
+    });
+
+    // The picture has the five items of the original, each as high as an
+    // item. The second, multiplayer, is left out (#65): the first is drawn,
+    // and what comes after the second where the second was.
+    pictures.push_back({.name = items, .x = 72, .y = first_row_y, .anchor = anchor, .rows = item_height});
+    pictures.push_back({
+      .name = items,
+      .x = 72,
+      .y = first_row_y + item_height,
+      .anchor = anchor,
+      .first_row = 2 * item_height,
+    });
+
+    const auto frame = static_cast<std::size_t>(count_ticks(time, 10.0) % 6);
+    pictures.push_back({
+      .name = cursor_names[frame],
+      .x = 54,
+      .y = first_row_y + cursor * item_height,
+      .anchor = anchor,
+    });
   }
 
   void Menu::AddPictureScreen(
@@ -711,6 +837,60 @@ namespace quake
       else { add_slider(pictures, option_value_x, y, (value - row.least) / (row.most - row.least)); }
     }
 
+    // the item that leads to the video settings, which has no value
+    add_bronze_line(
+      pictures, video_label, option_label_end - static_cast<std::int32_t>(video_label.size()) * 8,
+      first_row_y + option_items * line_height);
+
     add_text_cursor(pictures, option_cursor_x, _options_cursor, time);
+  }
+
+  void Menu::AddVideo(
+    std::vector<HudPicture> &pictures,
+    const MenuOptions &options,
+    const std::int32_t title_width,
+    const double time) const
+  {
+    pictures.push_back({.name = "gfx/qplaque.lmp", .x = 16, .y = title_y, .anchor = anchor});
+    pictures.push_back({
+      .name = "gfx/p_option.lmp",
+      .x = (screen_width - title_width) / 2,
+      .y = title_y,
+      .anchor = anchor,
+    });
+
+    constexpr std::array<std::string_view, 3> modes = {"window", "borderless", "fullscreen"};
+    const auto mode = static_cast<std::size_t>(std::clamp(options.window_mode, 0.0f, 2.0f));
+
+    // the size as `1920x1080`, or that it is as the game was started
+    const auto width = static_cast<std::int32_t>(options.window_width);
+    const auto height = static_cast<std::int32_t>(options.window_height);
+    const std::string size = width > 0 && height > 0 ? std::to_string(width) + "x" + std::to_string(height) : "as started";
+
+    // the limit is said with its name, since its slider is where the
+    // words of the others are
+    const std::int32_t place = frame_limit_place(options.frame_limit);
+    const std::string limit = "Max FPS " + (place == frame_limit_places - 1
+                                              ? std::string("unlimited")
+                                              : std::to_string(static_cast<std::int32_t>(frame_limit_at(place))));
+
+    const std::array<std::pair<std::string_view, std::string_view>, video_items> rows = {{
+      {"Video Mode", modes[mode]},
+      {"Resolution", size},
+      {"Vertical Sync", options.vertical_sync ? "on" : "off"},
+      {limit, ""},
+    }};
+    for (std::size_t i = 0; i < rows.size(); i++)
+    {
+      const std::int32_t y = first_row_y + static_cast<std::int32_t>(i) * line_height;
+      add_bronze_line(pictures, rows[i].first, option_label_end - static_cast<std::int32_t>(rows[i].first.size()) * 8, y);
+      if (!rows[i].second.empty()) { add_bronze_line(pictures, rows[i].second, option_value_x, y); }
+      else
+      {
+        add_slider(pictures, option_value_x, y, static_cast<float>(place) / static_cast<float>(frame_limit_places - 1));
+      }
+    }
+
+    add_text_cursor(pictures, option_cursor_x, _video_cursor, time);
   }
 } // quake

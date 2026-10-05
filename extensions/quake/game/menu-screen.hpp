@@ -11,7 +11,7 @@ namespace quake
     /// The menus are closed and the game goes on.
     None,
 
-    /// The first screen: single player, multiplayer, options, help, quit.
+    /// The first screen: single player, options, help, quit.
     Main,
 
     /// New game, load, save.
@@ -26,13 +26,13 @@ namespace quake
     /// The twelve saved games, to save over one.
     Save,
 
-    /// The three items of the original, of which none leads anywhere
-    /// here, and its line that says so.
-    Multiplayer,
-
     /// The settings.
     Options,
 
+    /// How the game is shown: the mode of the window, its size, and
+    /// vertical sync. Reached from the settings. The original had a
+    /// screen of the modes of its display here.
+    Video,
     /// The six pages of help.
     Help,
 

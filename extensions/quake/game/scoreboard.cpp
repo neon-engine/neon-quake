@@ -11,11 +11,10 @@
 
 namespace quake
 {
-  std::vector<HudPicture> Scoreboard::Layout(const PlayerStats &stats)
+  std::vector<HudPicture> Scoreboard::Layout(const PlayerStats &stats, const HudAnchor anchor, const std::int32_t top)
   {
-    constexpr std::int32_t top = StatusBar::top;
     std::vector<HudPicture> pictures;
-    pictures.push_back({.name = "scorebar", .x = 0, .y = top});
+    pictures.push_back({.name = "scorebar", .x = 0, .y = top, .anchor = anchor});
 
     // snprintf never writes past the array, and says how much it wanted to
     std::array<char, 64> line{};
@@ -24,7 +23,7 @@ namespace quake
       if (length <= 0) { return; }
 
       const std::size_t count = std::min(static_cast<std::size_t>(length), line.size() - 1);
-      HudText::AddLine(pictures, std::string_view(line.data(), count), x, y, HudAnchor::Bottom);
+      HudText::AddLine(pictures, std::string_view(line.data(), count), x, y, anchor);
     };
 
     add(
@@ -43,7 +42,7 @@ namespace quake
 
     const std::string_view name = std::string_view(stats.level_name).substr(0, longest_name);
     HudText::AddLine(
-      pictures, name, 232 - static_cast<std::int32_t>(name.size()) * 4, top + 12, HudAnchor::Bottom);
+      pictures, name, 232 - static_cast<std::int32_t>(name.size()) * 4, top + 12, anchor);
     return pictures;
   }
 } // quake

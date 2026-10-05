@@ -12,11 +12,21 @@ namespace quake
 {
   using neon::extension::World;
 
-  const HudView::Known &HudView::Find(const World &world, const GameData &data, const std::string_view name)
+  const HudView::Known &HudView::Find(
+    const World &world,
+    const GameData &data,
+    const std::string_view name,
+    const std::int32_t first_row,
+    const std::int32_t rows)
   {
-    if (const auto known = _pictures.find(name); known != _pictures.end()) { return known->second; }
+    // a strip of a picture is known apart from the whole of it
+    const bool is_strip = first_row > 0 || rows > 0;
+    const std::string key = is_strip
+                              ? std::string(name) + "#" + std::to_string(first_row) + "+" + std::to_string(rows)
+                              : std::string(name);
+    if (const auto known = _pictures.find(key); known != _pictures.end()) { return known->second; }
 
-    Known &made = _pictures[std::string(name)];
+    Known &made = _pictures[key];
 
     if (!_was_read)
     {
@@ -40,6 +50,21 @@ namespace quake
       return made;
     }
 
+    // the rows that are asked for alone, as many as the picture has
+    if (is_strip)
+    {
+      const std::int32_t first = std::clamp(first_row, 0, picture.height);
+      const std::int32_t count = rows > 0 ? std::min(rows, picture.height - first) : picture.height - first;
+      if (count <= 0)
+      {
+        world.Warn("The picture " + std::string(name) + " has no row " + std::to_string(first_row));
+        return made;
+      }
+      const auto from = picture.pixels.begin() + static_cast<std::ptrdiff_t>(first * picture.width);
+      picture.pixels = std::vector<std::uint8_t>(from, from + static_cast<std::ptrdiff_t>(count * picture.width));
+      picture.height = count;
+    }
+
     // The letters are see-through where they have the first colour of the
     // palette, every other picture where it has the last.
     std::vector<std::uint8_t> pixels;
@@ -54,7 +79,7 @@ namespace quake
     }
 
     made.path = world.SetImage(
-      "hud/" + std::string(name),
+      "hud/" + key,
       static_cast<std::uint32_t>(picture.width),
       static_cast<std::uint32_t>(picture.height),
       pixels);
@@ -176,7 +201,7 @@ namespace quake
         path = FindLetter(world, data, command.character & 255);
       } else
       {
-        const Known &known = Find(world, data, command.name);
+        const Known &known = Find(world, data, command.name, command.first_row, command.rows);
         path = known.path;
         width = static_cast<float>(known.width);
         height = static_cast<float>(known.height);

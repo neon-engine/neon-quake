@@ -1,9 +1,12 @@
 #ifndef QUAKE_MENU_GAME_HPP
 #define QUAKE_MENU_GAME_HPP
 
+#include <vector>
 #include <array>
 #include <cstddef>
 #include <string>
+
+#include "menu-size.hpp"
 
 namespace quake
 {
@@ -26,6 +29,10 @@ namespace quake
     /// of the level and the count of kills. An empty one is a slot with
     /// no saved game: it shows as unused, and cannot be loaded.
     std::array<std::string, slot_count> slots;
+
+    /// The sizes the display offers the window, the largest first, which
+    /// the video settings go through. Empty when there is no display.
+    std::vector<MenuSize> display_sizes;
   };
 } // quake
 

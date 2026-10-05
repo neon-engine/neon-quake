@@ -1024,7 +1024,6 @@ namespace quake
     MenuTitleWidths widths;
     widths.main = _hud.GetWidth(*_world, *_data, "gfx/ttl_main.lmp");
     widths.single_player = _hud.GetWidth(*_world, *_data, "gfx/ttl_sgl.lmp");
-    widths.multiplayer = _hud.GetWidth(*_world, *_data, "gfx/p_multi.lmp");
     widths.load = _hud.GetWidth(*_world, *_data, "gfx/p_load.lmp");
     widths.save = _hud.GetWidth(*_world, *_data, "gfx/p_save.lmp");
     widths.options = _hud.GetWidth(*_world, *_data, "gfx/p_option.lmp");
@@ -1109,6 +1108,7 @@ namespace quake
     // what the player saved and set in a run before, and the menu
     ReadSaves();
     ReadOptions();
+    ReadVideo();
     ApplyOptions();
     _menu.Open();
     _was_started = true;
@@ -1306,6 +1306,7 @@ namespace quake
     game.is_running = _level != nullptr;
     game.is_in_intermission = _is_over;
     for (std::size_t slot = 0; slot < save_slots; slot++) { game.slots[slot] = _save_names[slot]; }
+    game.display_sizes = _display_sizes;
     return game;
   }
 
@@ -1371,6 +1372,11 @@ namespace quake
     add(MenuOptions::sound_volume_name, _options.sound_volume);
     add(MenuOptions::always_run_name, _options.always_run ? 1.0f : 0.0f);
     add(MenuOptions::invert_mouse_name, _options.invert_mouse ? 1.0f : 0.0f);
+    add(MenuOptions::window_mode_name, _options.window_mode);
+    add(MenuOptions::window_width_name, _options.window_width);
+    add(MenuOptions::window_height_name, _options.window_height);
+    add(MenuOptions::vertical_sync_name, _options.vertical_sync ? 1.0f : 0.0f);
+    add(MenuOptions::frame_limit_name, _options.frame_limit);
     _world->WriteFile(std::string(options_file), std::vector<std::uint8_t>(text.begin(), text.end()));
   }
 
@@ -1458,10 +1464,81 @@ namespace quake
 
     // the third of the game's numbers for its shaders, see quake.glsl
     _world->SetShaderNumbers(2, {_options.gamma, 0.0f, 0.0f, 0.0f});
+
+    ApplyVideo();
+  }
+
+  void GameCode::ReadVideo()
+  {
+    // the sizes the display offers, which the video settings go through
+    _display_sizes.clear();
+    for (const auto &[width, height] : _world->ListDisplaySizes()) { _display_sizes.push_back({width, height}); }
+
+    // What the player never chose is as the game was started, which the
+    // menu shows as what it is.
+    if (_options.window_mode < 0.0f) { _options.window_mode = static_cast<float>(_world->GetWindowMode()); }
+    if (int width = 0, height = 0; (_options.window_width <= 0.0f || _options.window_height <= 0.0f) &&
+                                   _world->GetWindowSize(width, height))
+    {
+      _options.window_width = static_cast<float>(width);
+      _options.window_height = static_cast<float>(height);
+    }
+
+    // The frame limit a run before chose holds from the start. Only one
+    // that is chosen in the menu is waited for.
+    if (_options.frame_limit < 0.0f) { _options.frame_limit = static_cast<float>(_world->GetFrameLimit()); }
+    const int limit = FrameLimitOf(_options);
+    _world->SetFrameLimit(limit);
+    _frame_limit_delay.Start(limit);
+
+    // as it is now, so that only what the player chose otherwise is changed
+    _shown_window_mode = _world->GetWindowMode();
+    _shown_vertical_sync = _world->GetVerticalSync();
+    if (int width = 0, height = 0; _world->GetWindowSize(width, height))
+    {
+      _shown_window_width = width;
+      _shown_window_height = height;
+    }
+  }
+
+  void GameCode::ApplyVideo()
+  {
+    // The window and the renderer are told what changed, and nothing
+    // else: showing a window another way makes its picture anew.
+    const int mode = std::clamp(static_cast<int>(_options.window_mode), 0, 2);
+    const int width = static_cast<int>(_options.window_width);
+    const int height = static_cast<int>(_options.window_height);
+
+    // the size before the mode, so that a display that is taken over is
+    // switched to it at once
+    if (width > 0 && height > 0 && (width != _shown_window_width || height != _shown_window_height) &&
+        _world->SetWindowSize(width, height))
+    {
+      _shown_window_width = width;
+      _shown_window_height = height;
+    }
+    if (mode != _shown_window_mode && _world->SetWindowMode(mode)) { _shown_window_mode = mode; }
+    if (_options.vertical_sync != _shown_vertical_sync && _world->SetVerticalSync(_options.vertical_sync))
+    {
+      _shown_vertical_sync = _options.vertical_sync;
+    }
+
+    // the frame limit holds once its slider was left alone, see
+    // ReadInput(): the menu is not to speed up and slow down under it
+    _frame_limit_delay.Ask(FrameLimitOf(_options), _played_time);
+  }
+
+  int GameCode::FrameLimitOf(const MenuOptions &options)
+  {
+    if (!(options.frame_limit > 0.0f)) { return 0; }
+
+    return static_cast<int>(
+      std::clamp(options.frame_limit, MenuOptions::least_frame_limit, MenuOptions::most_frame_limit));
   }
 
   void GameCode::Act(const std::vector<MenuAction> &actions)
   {
+    bool options_changed = false;
     for (const MenuAction &action : actions)
     {
       switch (action.kind)
@@ -1471,9 +1548,10 @@ namespace quake
           _sounds->Play(*_world, *_data, 0, 0, std::string(action.name), {0.0f, 0.0f, 0.0f}, 1.0f, 0.0f);
           break;
         case MenuActionKind::SetOption:
+          // made so once everything of this key is set: a size is two
+          // options, and is no size with one of them
           _options.Set(action.name, action.value);
-          ApplyOptions();
-          WriteOptions();
+          options_changed = true;
           break;
         case MenuActionKind::NewGame:
           // the game starts where the original starts one, as a new player
@@ -1496,10 +1574,24 @@ namespace quake
           break;
       }
     }
+
+    if (options_changed)
+    {
+      ApplyOptions();
+      WriteOptions();
+    }
   }
 
   void GameCode::ReadInput(const World &world, const float frame_time)
   {
+    // a frame limit that was chosen and left alone since is made so
+    _played_time += static_cast<double>(frame_time);
+    if (const std::optional<int> limit = _frame_limit_delay.Take(_played_time))
+    {
+      world.SetFrameLimit(*limit);
+      world.Info(*limit > 0 ? "The frames are held to " + std::to_string(*limit) + " a second" : "The frames are held to no limit");
+    }
+
     if (_level == nullptr && _demo == nullptr) { return; }
     _world = &world;
     _frame_time = frame_time;
@@ -1651,6 +1743,7 @@ namespace quake
       // what the player saved and set in a run before
       ReadSaves();
       ReadOptions();
+      ReadVideo();
       ApplyOptions();
       if (!_tours) { _menu.Open(); }
     }

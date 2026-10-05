@@ -18,9 +18,6 @@ namespace quake
     /// `gfx/ttl_sgl.lmp`
     std::int32_t single_player = 128;
 
-    /// `gfx/p_multi.lmp`
-    std::int32_t multiplayer = 216;
-
     /// `gfx/p_load.lmp`
     std::int32_t load = 104;
 

@@ -29,6 +29,18 @@ namespace quake
     return {.name = name, .x = x, .y = y, .anchor = anchor};
   }
 
+  /// Some rows of a picture at a place, for what a test expects.
+  [[nodiscard]] inline HudPicture MakeStrip(
+    const std::string_view name,
+    const std::int32_t x,
+    const std::int32_t y,
+    const std::int32_t first_row,
+    const std::int32_t rows,
+    const HudAnchor anchor = HudAnchor::Bottom)
+  {
+    return {.name = name, .x = x, .y = y, .anchor = anchor, .first_row = first_row, .rows = rows};
+  }
+
   /// A letter at a place, for what a test expects.
   [[nodiscard]] inline HudPicture MakeLetter(
     const std::int32_t character,
