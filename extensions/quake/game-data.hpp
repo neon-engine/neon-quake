@@ -31,7 +31,8 @@ namespace quake
     static constexpr std::string_view folder = "extensions://quake/assets/id1/";
 
     /// Reads `pak0.pak`, `pak1.pak`, and so on, for as long as there is a
-    /// next one, and the palette out of them. Returns false when there is
+    /// next one, in any letter case (`PAK0.PAK` as on Steam), and the
+    /// palette out of them. Returns false when there is
     /// no archive, one cannot be read, or they hold no palette, and says
     /// which in `error`.
     bool Load(const neon::extension::World &world, std::string &error);

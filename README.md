@@ -197,6 +197,11 @@ The extension reads it as `extensions://quake/assets/id1/pak0.pak`,
 itself; the engine knows nothing of archives. The data is not ours and is
 never committed.
 
+The archives and the music, `music/track02.ogg` and on, are found in any
+letter case: the original release on Steam has `PAK0.PAK` and `PAK1.PAK`, and
+they are used as they are. The engine opens a file only by its name as it is
+on disk, so the extension lists the folder and takes the name it finds there.
+
 Without any data the game starts and says that it is missing.
 
 ## Tests

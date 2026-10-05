@@ -1,9 +1,11 @@
 #include "sound-view.hpp"
 
+#include <optional>
 #include <span>
 #include <utility>
 
 #include "formats/quake-space.hpp"
+#include "game/any-case-name.hpp"
 
 namespace quake
 {
@@ -147,8 +149,12 @@ namespace quake
 
     // the tracks are files of their own, which the audio reads as they are
     const std::string number = (track < 10 ? "0" : "") + std::to_string(track);
-    const std::string path = std::string(GameData::folder) + "music/track" + number + ".ogg";
-    if (!world.FileExists(path)) { return; }
+    // found in any case, as the archives are: a copy of the music may name
+    // it Track02.OGG, and the engine opens a file only by its name on disk
+    const std::string music = std::string(GameData::folder) + "music/";
+    const std::optional<std::string> name = FindAnyCaseName(world.ListFiles(music), "track" + number + ".ogg");
+    if (!name) { return; }
+    const std::string path = music + *name;
 
     _music = world.CreateEntity("music " + number);
     world.AddComponent(_music, "SoundSource");

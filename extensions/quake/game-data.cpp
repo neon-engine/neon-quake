@@ -1,19 +1,27 @@
 #include "game-data.hpp"
 
+#include <optional>
 #include <utility>
 
 #include "formats/pak-file.hpp"
+#include "game/any-case-name.hpp"
 
 namespace quake
 {
   bool GameData::Load(const neon::extension::World &world, std::string &error)
   {
+    // The archives are opened by the name they have, which may be PAK0.PAK
+    // as on Steam: the engine opens a file only by its name as it is on
+    // disk, so the folder is listed and the name found in any case.
+    const std::vector<std::string> names = world.ListFiles(std::string(folder));
+
     // the archives are counted from 0, and the game stops at the first
     // number that is missing
     for (int number = 0;; number++)
     {
-      const std::string path = std::string(folder) + "pak" + std::to_string(number) + ".pak";
-      if (!world.FileExists(path)) { break; }
+      const std::optional<std::string> name = FindAnyCaseName(names, "pak" + std::to_string(number) + ".pak");
+      if (!name) { break; }
+      const std::string path = std::string(folder) + *name;
 
       std::vector<std::uint8_t> bytes;
       if (!world.ReadFile(path, bytes))

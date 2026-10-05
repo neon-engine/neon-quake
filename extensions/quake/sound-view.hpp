@@ -131,8 +131,8 @@ namespace quake
 
     /// Plays the music of a level, over and over: the track of a number as
     /// the level names it, which the data has as `music/track02.ogg` and so
-    /// on, next to its archives. The music before it ends. A track the data
-    /// does not have, and the number 0, is silence.
+    /// on, next to its archives, in any letter case. The music before it
+    /// ends. A track the data does not have, and the number 0, is silence.
     void PlayMusic(const neon::extension::World &world, int track);
 
     /// Sets how loud the sounds and the music are, each from 0 to 1: the
