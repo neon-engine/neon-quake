@@ -225,8 +225,9 @@ namespace quake
       {
         // A face the level gave no light is dark in a level that has light,
         // and not as bright as can be, which is what the atlas makes of it
-        // for the sake of what is drawn without light. Liquids are drawn
-        // without the lightmap below, so its bright spot is put out here.
+        // for the sake of what is drawn without light. A liquid
+        // without light is drawn without the lightmap below, so the bright
+        // spot is put out here.
         for (std::size_t face = 0; face < atlas.blocks.size(); face++)
         {
           const LightmapAtlasBlock &block = atlas.blocks[face];
@@ -265,6 +266,19 @@ namespace quake
     // one entity for each texture, with the faces that show it; and one for
     // each page of the light those faces lie on, which is one but for a
     // level larger than any here
+    // which corners are of a face the level gave light
+    std::vector<bool> has_light(mesh.vertices.size(), false);
+    if (is_lit)
+    {
+      for (std::size_t face = 0; face < mesh.faces.size() && face < atlas.blocks.size(); face++)
+      {
+        if (!atlas.blocks[face].is_lit) { continue; }
+
+        const BspMeshFace &lit_face = mesh.faces[face];
+        for (std::uint32_t corner = 0; corner < lit_face.vertex_count; corner++) { has_light[lit_face.first_vertex + corner] = true; }
+      }
+    }
+
     for (const BspMeshGroup &group : mesh.groups)
     {
       if (group.indices.empty()) { continue; }
@@ -275,13 +289,23 @@ namespace quake
       const std::string name = has_texture ? level.textures[group.texture]->name : "missing-" + std::to_string(group.texture);
       if (is_unseen(name)) { continue; }
 
-      // a liquid is shown as it is, and glows in the dark as it does in the
-      // game
-      const bool group_is_lit = is_lit && !group.is_liquid && !group.is_sky;
-      const std::size_t page_count = group_is_lit ? lightmaps.size() : 1;
+      // A liquid is shown as it is, and glows in the dark, where the level
+      // gave it no light, as the original has it. A level of today gives
+      // its liquids light, and what is made of a liquid's texture with them:
+      // a field of force is the colour of its light alone. Those faces are
+      // lit, on the pages of the light, and what is left of the liquid is
+      // drawn after them, without.
+      const bool liquid_is_lit = is_lit && group.is_liquid &&
+                                 std::ranges::any_of(group.indices, [&](const std::uint32_t index) { return has_light[index]; });
+      const bool group_is_lit = is_lit && !group.is_sky && (!group.is_liquid || liquid_is_lit);
+      const std::size_t page_count = !group_is_lit ? 1 : lightmaps.size() + (group.is_liquid ? 1 : 0);
 
       for (std::size_t page = 0; page < page_count; page++)
       {
+        // the last time through a liquid: its faces without light
+        const bool is_dark_part = group.is_liquid && group_is_lit && page == lightmaps.size();
+        const bool part_is_lit = group_is_lit && !is_dark_part;
+
         // The corners the group uses, handed over once each. A corner belongs
         // to one face and a face to one texture, so the groups share none.
         std::vector<Vertex> corners;
@@ -292,7 +316,8 @@ namespace quake
         for (const std::uint32_t index : group.indices)
         {
           // a face lies on one page of the light, with all its corners
-          if (group_is_lit && atlas.vertices[index].page != page) { continue; }
+          if (group.is_liquid && group_is_lit && has_light[index] == is_dark_part) { continue; }
+          if (part_is_lit && atlas.vertices[index].page != page) { continue; }
 
           if (place_of[index] == UINT32_MAX)
           {
@@ -307,7 +332,7 @@ namespace quake
               {from.texture_u, from.texture_v},
               {1.0f, 1.0f, 1.0f, 1.0f},
             });
-            if (group_is_lit) { light_places.push_back({atlas.vertices[index].u, atlas.vertices[index].v}); }
+            if (part_is_lit) { light_places.push_back({atlas.vertices[index].u, atlas.vertices[index].v}); }
           }
           indices.push_back(place_of[index]);
         }
@@ -414,7 +439,7 @@ namespace quake
           world.SetText(entity, collider_shape_field, "mesh");
         }
 
-        if (group_is_lit && !lightmaps[page].empty())
+        if (part_is_lit && !lightmaps[page].empty())
         {
           world.SetMeshLightmap(entity, light_places);
           world.SetText(entity, lightmap_field, lightmaps[page]);
