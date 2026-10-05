@@ -28,6 +28,19 @@ namespace quake
     return path;
   }
 
+  std::string SoundView::KeyOf(const std::string &path, const float far, const bool loops)
+  {
+    return path + "|" + std::to_string(far) + (loops ? "|loops" : "|once");
+  }
+
+  void SoundView::Rest(const World &world, const Playing &playing)
+  {
+    // turned off, it is stopped and kept, and plays from its start when it
+    // is turned on
+    world.SetEnabled(playing.entity, world.FindComponent("SoundSource"), false);
+    _waiting[playing.key].push_back(playing.entity);
+  }
+
   Entity SoundView::Make(
     const World &world,
     const std::string &name,
@@ -35,8 +48,22 @@ namespace quake
     const Vector3 &place,
     const float volume,
     const float far,
-    const bool loops)
+    const bool loops,
+    const std::string &key)
   {
+    // one that waits for this sound, where it sounds now
+    if (const auto waiting = _waiting.find(key); waiting != _waiting.end() && !waiting->second.empty())
+    {
+      const Entity entity = waiting->second.back();
+      waiting->second.pop_back();
+
+      world.SetVector3(entity, world.FindField("Transform", "position"), place);
+      world.SetNumber(entity, world.FindField("SoundSource", "volume"), volume);
+      world.SetBoolean(entity, world.FindField("SoundSource", "playing"), true);
+      world.SetEnabled(entity, world.FindComponent("SoundSource"), true);
+      return entity;
+    }
+
     // An entity is known by its name, and the same sound may play many times
     // at once, so each gets a number.
     const Entity entity = world.CreateEntity("sound " + std::to_string(++_made) + " " + name);
@@ -76,7 +103,7 @@ namespace quake
       {
         if (playing->is_ambient || playing->owner != owner || playing->channel != channel) { continue; }
 
-        world.DestroyEntity(playing->entity);
+        Rest(world, *playing);
         _playing.erase(playing);
         break;
       }
@@ -86,7 +113,8 @@ namespace quake
     if (path.empty() || volume <= 0.0f) { return; }
 
     const float far = wears_off > 0.0f ? reach / wears_off * QuakeSpace::metres_per_unit : 0.0f;
-    _playing.push_back({Make(world, name, path, place, volume, far, false), owner, channel, false});
+    const std::string key = KeyOf(path, far, false);
+    _playing.push_back({Make(world, name, path, place, volume, far, false, key), owner, channel, false, key});
   }
 
   void SoundView::PlayAmbient(
@@ -104,7 +132,8 @@ namespace quake
     // has it wear off three times as fast as an ordinary sound, so that it
     // is heard in its room and not in the level.
     const float far = wears_off > 0.0f ? reach / wears_off * QuakeSpace::metres_per_unit : 0.0f;
-    _playing.push_back({Make(world, name, path, place, volume, far, true), 0, 0, true});
+    const std::string key = KeyOf(path, far, true);
+    _playing.push_back({Make(world, name, path, place, volume, far, true, key), 0, 0, true, key});
   }
 
   void SoundView::PlayMusic(const World &world, const int track)
@@ -140,18 +169,18 @@ namespace quake
   {
     // the engine says that a sound has ended by no longer playing it
     const NeonField playing_field = world.FindField("SoundSource", "playing");
-    std::erase_if(_playing, [&world, playing_field](const Playing &playing)
+    std::erase_if(_playing, [this, &world, playing_field](const Playing &playing)
     {
       if (playing.is_ambient || world.GetBoolean(playing.entity, playing_field)) { return false; }
 
-      world.DestroyEntity(playing.entity);
+      Rest(world, playing);
       return true;
     });
   }
 
   void SoundView::Clear(const World &world)
   {
-    for (const Playing &playing : _playing) { world.DestroyEntity(playing.entity); }
+    for (const Playing &playing : _playing) { Rest(world, playing); }
     _playing.clear();
   }
 } // quake
