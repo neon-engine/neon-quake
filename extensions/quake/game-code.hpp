@@ -4,7 +4,9 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
@@ -373,6 +375,10 @@ namespace quake
     // after it. Taken from a level when it stops, and given to the next.
     QcConsoleVariables _variables;
 
+    // Models of brushes in .bsp files of their own, as maps/b_explob.bsp,
+    // read once for their size. Empty for one that could not be read.
+    std::map<std::string, std::optional<BspModel>, std::less<>> _outside_models;
+
 
     // what the game is shown with, which outlive a level
     const neon::extension::World *_world = nullptr;
@@ -508,8 +514,12 @@ namespace quake
     void RegisterBuiltins();
 
     /// What `setmodel` does: the entity names a model and takes the size of
-    /// one of the level.
+    /// one made of brushes, of the level or of a .bsp file of its own.
     void SetModel(std::int32_t entity, std::int32_t name_offset, std::string_view name);
+
+    /// Model 0 of a .bsp file of its own, such as `maps/b_explob.bsp`, read
+    /// from the data once and kept. Null when it cannot be read.
+    const BspModel *FindOutsideModel(std::string_view name);
 
     /// What `makestatic` does: what the entity shows stays for the rest of
     /// the level, and the entity itself goes.

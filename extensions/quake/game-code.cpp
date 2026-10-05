@@ -147,24 +147,54 @@ namespace quake
     fields.model.Set(machine, entity, name_offset);
     fields.modelindex.Set(machine, entity, static_cast<float>(index >= 0 ? index : models.Add(name)));
 
-    // a model of the level has the size the level gives it; any other gets
-    // its size from the game code, with `setsize`
-    Vector mins{};
-    Vector maxs{};
+    // A model made of brushes has the size its file gives it: one of the
+    // level, or one of a .bsp file of its own, as id's barrel. Any other
+    // gets its size from the game code, with `setsize`. id's misc_explobox
+    // never calls it, and is shot and blown up by the size of its model.
+    const BspModel *model = nullptr;
     if (const std::size_t part = read_part_number(name); part > 0 && part < _level->file.models.size())
     {
-      const BspModel &model = _level->file.models[part];
-      // The original makes the box of a model of a level one unit larger
+      model = &_level->file.models[part];
+    } else if (name.ends_with(".bsp"))
+    {
+      model = FindOutsideModel(name);
+    }
+
+    Vector mins{};
+    Vector maxs{};
+    if (model != nullptr)
+    {
+      // The original makes the box of a model of brushes one unit larger
       // each way than its file says. The game code counts on it: two leaves
       // of a door that stand side by side touch, so they open as one, and
       // the key that opens one is spent once.
-      mins = {model.mins.x - 1.0f, model.mins.y - 1.0f, model.mins.z - 1.0f};
-      maxs = {model.maxs.x + 1.0f, model.maxs.y + 1.0f, model.maxs.z + 1.0f};
+      mins = {model->mins.x - 1.0f, model->mins.y - 1.0f, model->mins.z - 1.0f};
+      maxs = {model->maxs.x + 1.0f, model->maxs.y + 1.0f, model->maxs.z + 1.0f};
     }
     fields.mins.Set(machine, entity, mins);
     fields.maxs.Set(machine, entity, maxs);
     fields.size.Set(machine, entity, {maxs[0] - mins[0], maxs[1] - mins[1], maxs[2] - mins[2]});
     _level->collision.Link(entity);
+  }
+
+  const BspModel *GameCode::FindOutsideModel(const std::string_view name)
+  {
+    if (const auto known = _outside_models.find(name); known != _outside_models.end())
+    {
+      return known->second ? &*known->second : nullptr;
+    }
+
+    // the whole of the file is model 0; one that cannot be read has no size
+    std::optional<BspModel> &model = _outside_models[std::string(name)];
+    BspFile file;
+    if (std::string problem; file.Read(_data->Find(name), problem) && !file.models.empty())
+    {
+      model = file.models[0];
+    } else
+    {
+      _world->Warn("The model " + std::string(name) + " has no size: " + problem);
+    }
+    return model ? &*model : nullptr;
   }
 
   void GameCode::MakeStatic(const std::int32_t entity)
