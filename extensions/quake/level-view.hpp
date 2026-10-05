@@ -13,6 +13,7 @@
 
 #include <neon/extension/neon-extension.hpp>
 
+#include "game/spread-queue.hpp"
 #include "formats/bsp-file.hpp"
 #include "formats/bsp-light-point.hpp"
 #include "formats/entity-text.hpp"
@@ -125,6 +126,12 @@ namespace quake
     std::vector<ChangingLight> _changing_lights;
     LightStyles::Values _style_values{};
     bool _has_style_values = false;
+
+    // The pictures of light that were composed anew and are still to go to
+    // the renderer, a few in each frame, and the time of the frame before,
+    // which says how long a frame is.
+    SpreadQueue _light_uploads;
+    double _light_time = 0.0;
 
     // the entity everything of the level that is shown stands under
     neon::extension::Entity _root = 0;

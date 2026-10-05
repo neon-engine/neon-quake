@@ -478,6 +478,7 @@ namespace quake
     _has_lit = false;
     _has_light = false;
     _changing_lights.clear();
+    _light_uploads.Clear();
     _changing_textures.clear();
     _part_frames.clear();
     _styles = LightStyles();
@@ -570,22 +571,35 @@ namespace quake
 
   void LevelView::UpdateLight(const World &world, const double time)
   {
-    const LightStyles::Values values = _styles.GetValues(time);
-    if (_has_style_values && values == _style_values) { return; }
-    _style_values = values;
-    _has_style_values = true;
+    const double frame_seconds = time - _light_time;
+    _light_time = time;
 
-    for (ChangingLight &light : _changing_lights)
+    // When the styles are worth something else, ten times a second, the
+    // pictures with a face of such a style are composed anew. They go to
+    // the renderer over the next frames, not all in this one: dozens of
+    // pictures in one frame hold that frame up.
+    if (const LightStyles::Values values = _styles.GetValues(time); !_has_style_values || values != _style_values)
     {
-      // only the pictures that hold a face whose style changed come back
-      for (const std::uint32_t page : light.atlas.Compose(values))
-      {
-        if (page >= light.names.size()) { continue; }
+      _style_values = values;
+      _has_style_values = true;
 
-        const LightmapAtlasPage &pixels = light.atlas.pages[page];
-        // the path is the one the materials have already
-        (void) world.SetImage(light.names[page], pixels.width, pixels.height, pixels.pixels);
+      for (std::size_t light = 0; light < _changing_lights.size(); light++)
+      {
+        // only the pictures that hold a face whose style changed come back
+        for (const std::uint32_t page : _changing_lights[light].atlas.Compose(values))
+        {
+          if (page < _changing_lights[light].names.size()) { _light_uploads.Add({light, page}); }
+        }
       }
+    }
+
+    for (const auto &[light, page] : _light_uploads.Take(frame_seconds))
+    {
+      if (light >= _changing_lights.size() || page >= _changing_lights[light].names.size()) { continue; }
+
+      const LightmapAtlasPage &pixels = _changing_lights[light].atlas.pages[page];
+      // the path is the one the materials have already
+      (void) world.SetImage(_changing_lights[light].names[page], pixels.width, pixels.height, pixels.pixels);
     }
   }
 
