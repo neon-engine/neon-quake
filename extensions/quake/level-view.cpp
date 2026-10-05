@@ -395,7 +395,11 @@ namespace quake
             if (changing.glows)
             {
               changing.glow_name = changing.name + "/glow";
-              world.SetText(entity, glow_field, world.SetImage(changing.glow_name, 1, 1, {0, 0, 0, 0}));
+              // As large as the frames, and dark: a picture that is set
+              // again keeps its size, so one of a single pixel would
+              // never take the glow of a frame.
+              const std::vector<std::uint8_t> dark(static_cast<std::size_t>(first.width) * first.height * 4, 0);
+              world.SetText(entity, glow_field, world.SetImage(changing.glow_name, first.width, first.height, dark));
             }
             _changing_textures.push_back(std::move(changing));
           }
@@ -610,8 +614,13 @@ namespace quake
       (void) world.SetImage(changing.name, shown.width, shown.height, shown.pixels);
       if (!changing.glows) { continue; }
 
-      if (shown.glow.empty()) { (void) world.SetImage(changing.glow_name, 1, 1, {0, 0, 0, 0}); }
-      else { (void) world.SetImage(changing.glow_name, shown.width, shown.height, shown.glow); }
+      // a frame that does not glow is dark all over, at the size of the
+      // others: a picture that is set again keeps its size
+      if (shown.glow.empty())
+      {
+        const std::vector<std::uint8_t> dark(static_cast<std::size_t>(shown.width) * shown.height * 4, 0);
+        (void) world.SetImage(changing.glow_name, shown.width, shown.height, dark);
+      } else { (void) world.SetImage(changing.glow_name, shown.width, shown.height, shown.glow); }
     }
   }
 
