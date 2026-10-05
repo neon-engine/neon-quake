@@ -477,6 +477,10 @@ namespace quake
     static constexpr float bob_cycle = 0.6f;
     static constexpr float bob_up = 0.5f;
 
+    /// What part of the bob pushes the weapon along where the eyes look, as
+    /// the original has it.
+    static constexpr float weapon_bob = 0.4f;
+
     /// How far the view leans into a sidestep, in degrees, the speed at
     /// which it leans all the way, and how far it lies over when the player
     /// is dead.

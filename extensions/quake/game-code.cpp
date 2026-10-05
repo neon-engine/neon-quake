@@ -1290,6 +1290,7 @@ namespace quake
 
     // The view bobs with the stride of a player who walks. One who is dead,
     // or looks at a level that is over, is still.
+    float bob = 0.0f;
     if (!IsPlayerHeld())
     {
       const Vector velocity = fields.velocity.Get(machine, player_entity);
@@ -1298,8 +1299,18 @@ namespace quake
       auto stride = static_cast<float>(time - std::floor(time / bob_cycle) * bob_cycle) / bob_cycle;
       constexpr float pi = 3.14159265f;
       stride = stride < bob_up ? pi * stride / bob_up : pi + pi * (stride - bob_up) / (1.0f - bob_up);
-      const float bob = std::hypot(velocity[0], velocity[1]) * bob_amount;
-      eyes[2] += std::clamp(bob * 0.3f + bob * 0.7f * std::sin(stride), -7.0f, 4.0f);
+      const float speed = std::hypot(velocity[0], velocity[1]) * bob_amount;
+      bob = std::clamp(speed * 0.3f + speed * 0.7f * std::sin(stride), -7.0f, 4.0f);
+      eyes[2] += bob;
+    }
+
+    // The weapon rises and falls with the view, which it hangs from, and is
+    // pushed along where the eyes look by a part of the bob as well, as in
+    // the original. So it sways in and out with the stride; without the push
+    // it would stand still on the screen. The camera looks along negative z.
+    if (_weapon != 0)
+    {
+      _world->SetVector3(_weapon, _position_field, {0.0f, 0.0f, -bob * weapon_bob * QuakeSpace::metres_per_unit});
     }
 
     const BspVector place = QuakeSpace::ToEnginePosition({eyes[0], eyes[1], eyes[2]});
