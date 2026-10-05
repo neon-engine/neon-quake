@@ -1,6 +1,7 @@
 #ifndef QUAKE_MENU_OPTIONS_HPP
 #define QUAKE_MENU_OPTIONS_HPP
 
+#include <algorithm>
 #include <string_view>
 
 namespace quake
@@ -24,6 +25,7 @@ namespace quake
     static constexpr std::string_view window_height_name = "vid_height";
     static constexpr std::string_view vertical_sync_name = "vid_vsync";
     static constexpr std::string_view frame_limit_name = "vid_maxfps";
+    static constexpr std::string_view unlimited_frames_name = "vid_unlimited";
 
     /// The least and the most frames a second a limit is, and how far a
     /// step of its slider goes.
@@ -72,10 +74,30 @@ namespace quake
     /// that the game draws every frame it can, as it is played today.
     bool vertical_sync = false;
 
-    /// The most frames a second, from 30 to 300, or 0 for as many as can
-    /// be drawn. Below 0 for as the game was started, which the host makes
-    /// one of them before the menu shows it.
+    /// The most frames a second, from 30 to 300, which holds unless
+    /// `unlimited_frames` says there is no limit. Below 0 for as the game
+    /// was started, which the host makes a number before the menu shows it.
     float frame_limit = -1.0f;
+
+    /// Whether as many frames are drawn as can be. The number above is
+    /// kept all the while, for when this is turned off again.
+    bool unlimited_frames = false;
+
+    /// The number the slider starts at when the game was started without
+    /// a limit.
+    static constexpr float usual_frame_limit = 120.0f;
+
+    /// Whether the player, or a run before, said anything about a limit.
+    [[nodiscard]] constexpr bool HasFrameLimit() const { return unlimited_frames || frame_limit > 0.0f; }
+
+    /// The limit as the engine takes it: 0 for none, or the number, held
+    /// to what a limit can be.
+    [[nodiscard]] constexpr int GetFrameLimit() const
+    {
+      if (unlimited_frames || !(frame_limit > 0.0f)) { return 0; }
+
+      return static_cast<int>(std::clamp(frame_limit, least_frame_limit, most_frame_limit));
+    }
 
     /// Whether the player runs without the key for it.
     bool always_run = false;
@@ -97,7 +119,14 @@ namespace quake
       else if (name == window_width_name) { window_width = value; }
       else if (name == window_height_name) { window_height = value; }
       else if (name == vertical_sync_name) { vertical_sync = value != 0.0f; }
-      else if (name == frame_limit_name) { frame_limit = value; }
+      else if (name == frame_limit_name)
+      {
+        // 0 was no limit before there was a setting for it, and is read
+        // as that
+        if (value == 0.0f) { unlimited_frames = true; }
+        else { frame_limit = value; }
+      }
+      else if (name == unlimited_frames_name) { unlimited_frames = value != 0.0f; }
       else if (name == always_run_name) { always_run = value != 0.0f; }
       else if (name == invert_mouse_name) { invert_mouse = value != 0.0f; }
       else { return false; }

@@ -1379,6 +1379,7 @@ namespace quake
     add(MenuOptions::window_height_name, _options.window_height);
     add(MenuOptions::vertical_sync_name, _options.vertical_sync ? 1.0f : 0.0f);
     add(MenuOptions::frame_limit_name, _options.frame_limit);
+    add(MenuOptions::unlimited_frames_name, _options.unlimited_frames ? 1.0f : 0.0f);
     _world->WriteFile(std::string(options_file), std::vector<std::uint8_t>(text.begin(), text.end()));
     WriteVideoSettings();
   }
@@ -1509,7 +1510,14 @@ namespace quake
 
     // The frame limit a run before chose holds from the start. Only one
     // that is chosen in the menu is waited for.
-    if (_options.frame_limit < 0.0f) { _options.frame_limit = static_cast<float>(_world->GetFrameLimit()); }
+    if (_options.frame_limit < 0.0f)
+    {
+      // as the game was started: with a limit, or without one, and then
+      // the slider is at the usual number for when one is wanted
+      const int started = _world->GetFrameLimit();
+      if (started <= 0) { _options.unlimited_frames = true; }
+      _options.frame_limit = started > 0 ? static_cast<float>(started) : MenuOptions::usual_frame_limit;
+    }
     const int limit = FrameLimitOf(_options);
     _world->SetFrameLimit(limit);
     _frame_limit_delay.Start(limit);
@@ -1553,10 +1561,7 @@ namespace quake
 
   int GameCode::FrameLimitOf(const MenuOptions &options)
   {
-    if (!(options.frame_limit > 0.0f)) { return 0; }
-
-    return static_cast<int>(
-      std::clamp(options.frame_limit, MenuOptions::least_frame_limit, MenuOptions::most_frame_limit));
+    return options.GetFrameLimit();
   }
 
   void GameCode::Act(const std::vector<MenuAction> &actions)

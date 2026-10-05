@@ -682,13 +682,67 @@ namespace
     EXPECT_EQ(menu.GetCursor(), 8) << "where it was left";
   }
 
-  TEST(MenuTest, MovesAroundTheFourVideoSettings)
+  TEST(MenuTest, MovesAroundTheFiveVideoSettings)
   {
     Menu menu = make_menu_in_video();
     EXPECT_THAT(menu.Press(MenuKey::Up), ElementsAre(move_sound));
-    EXPECT_EQ(menu.GetCursor(), 3);
+    EXPECT_EQ(menu.GetCursor(), 4);
     EXPECT_THAT(menu.Press(MenuKey::Down), ElementsAre(move_sound));
     EXPECT_EQ(menu.GetCursor(), 0);
+  }
+
+  TEST(MenuTest, TheCursorPassesOverTheSizeWhileTheWindowHasNoBorders)
+  {
+    Menu menu = make_menu_in_video();
+    MenuOptions options;
+    options.window_mode = 1.0f;
+
+    // from the mode down to vertical sync, and back up to the mode
+    EXPECT_THAT(menu.Press(MenuKey::Down, options), ElementsAre(move_sound));
+    EXPECT_EQ(menu.GetCursor(), 2);
+    EXPECT_THAT(menu.Press(MenuKey::Up, options), ElementsAre(move_sound));
+    EXPECT_EQ(menu.GetCursor(), 0);
+
+    // as a window, or over a display that is switched to it, the size counts
+    for (const float mode : {0.0f, 2.0f})
+    {
+      options.window_mode = mode;
+      menu.Press(MenuKey::Down, options);
+      EXPECT_EQ(menu.GetCursor(), 1) << mode;
+      menu.Press(MenuKey::Up, options);
+    }
+  }
+
+  TEST(MenuTest, TheCursorPassesOverTheFrameLimitWhileThereIsNone)
+  {
+    Menu menu = make_menu_in_video();
+    MenuOptions options;
+    options.unlimited_frames = true;
+
+    // up from the mode is the setting for no limit, and up from there
+    // vertical sync
+    menu.Press(MenuKey::Up, options);
+    EXPECT_EQ(menu.GetCursor(), 4);
+    menu.Press(MenuKey::Up, options);
+    EXPECT_EQ(menu.GetCursor(), 2);
+    menu.Press(MenuKey::Down, options);
+    EXPECT_EQ(menu.GetCursor(), 4);
+  }
+
+  TEST(MenuTest, ASettingThatIsGreyedOutStaysAsItIs)
+  {
+    // the cursor was left on the size, and then the window lost its borders
+    Menu menu = make_menu_in_video();
+    menu.Press(MenuKey::Down);
+    MenuOptions options;
+    options.window_mode = 1.0f;
+    options.window_width = 1920.0f;
+    options.window_height = 1080.0f;
+
+    for (const MenuKey key : {MenuKey::Left, MenuKey::Right})
+    {
+      EXPECT_THAT(menu.Press(key, options, make_game_with_display()), ElementsAre(change_sound));
+    }
   }
 
   TEST(MenuTest, GoesThroughTheModesOfTheWindowAndAround)
@@ -755,30 +809,41 @@ namespace
     EXPECT_THAT(menu.Press(MenuKey::Left, options), ElementsAre(change_sound, set_option("vid_vsync", 0.0f)));
   }
 
-  TEST(MenuTest, SlidesTheFrameLimitInTensFromThirtyToThreeHundredAndThenToNone)
+  TEST(MenuTest, SlidesTheFrameLimitInTensFromThirtyToThreeHundred)
   {
     Menu menu = make_menu_in_video();
-    menu.Press(MenuKey::Up);
+    for (int i = 0; i < 3; i++) { menu.Press(MenuKey::Down); }
+    ASSERT_EQ(menu.GetCursor(), Menu::frame_limit_item);
     MenuOptions options;
 
     options.frame_limit = 60.0f;
     EXPECT_THAT(menu.Press(MenuKey::Right, options), ElementsAre(change_sound, set_option("vid_maxfps", 70.0f)));
     EXPECT_THAT(menu.Press(MenuKey::Left, options), ElementsAre(change_sound, set_option("vid_maxfps", 50.0f)));
 
-    // it stops at the least
+    // it stops at the least and at the most
     options.frame_limit = 30.0f;
     EXPECT_THAT(menu.Press(MenuKey::Left, options), ElementsAre(change_sound, set_option("vid_maxfps", 30.0f)));
-
-    // past the most there is no limit, which is 0, and where it stops
     options.frame_limit = 300.0f;
-    EXPECT_THAT(menu.Press(MenuKey::Right, options), ElementsAre(change_sound, set_option("vid_maxfps", 0.0f)));
-    options.frame_limit = 0.0f;
-    EXPECT_THAT(menu.Press(MenuKey::Right, options), ElementsAre(change_sound, set_option("vid_maxfps", 0.0f)));
-    EXPECT_THAT(menu.Press(MenuKey::Left, options), ElementsAre(change_sound, set_option("vid_maxfps", 300.0f)));
+    EXPECT_THAT(menu.Press(MenuKey::Right, options), ElementsAre(change_sound, set_option("vid_maxfps", 300.0f)));
 
     // a number between two places goes on from the nearest
     options.frame_limit = 144.0f;
     EXPECT_THAT(menu.Press(MenuKey::Right, options), ElementsAre(change_sound, set_option("vid_maxfps", 150.0f)));
+  }
+
+  TEST(MenuTest, TurnsTheLimitOfTheFramesOffAndOn)
+  {
+    Menu menu = make_menu_in_video();
+    menu.Press(MenuKey::Up);
+    MenuOptions options;
+    options.frame_limit = 90.0f;
+
+    // the number is not touched: it is there again when the limit is
+    EXPECT_THAT(menu.Press(MenuKey::Right, options), ElementsAre(change_sound, set_option("vid_unlimited", 1.0f)));
+    options.unlimited_frames = true;
+    EXPECT_THAT(menu.Press(MenuKey::Left, options), ElementsAre(change_sound, set_option("vid_unlimited", 0.0f)));
+    EXPECT_THAT(
+      menu.Press(MenuKey::Select, options), ElementsAre(change_sound, set_option("vid_unlimited", 0.0f), enter_sound));
   }
 
   TEST(MenuTest, LaysOutTheVideoSettingsWithTheirWords)
@@ -802,30 +867,88 @@ namespace
     append(expected, make_bronze_letters("on", 220, 48));
 
     // the limit with its name, and a slider of ten letters between its
-    // ends with the knob a ninth of the way along 72 pixels: 30 of 30 to
-    // 300 and none is the first of 29 places, 60 the fourth
+    // ends with the knob a ninth of the way along 72 pixels: 60 is the
+    // fourth of the 28 places from 30 to 300
     options.frame_limit = 60.0f;
     append(expected, make_bronze_letters("Max FPS 60", 112, 56));
     expected.push_back(MakeLetter(128, 212, 56, center));
     for (std::int32_t i = 0; i < 10; i++) { expected.push_back(MakeLetter(129, 220 + i * 8, 56, center)); }
     expected.push_back(MakeLetter(130, 300, 56, center));
-    expected.push_back(MakeLetter(131, 220 + 72 * 3 / 28, 56, center));
+    expected.push_back(MakeLetter(131, 220 + 72 * 3 / 27, 56, center));
+
+    append(expected, make_bronze_letters("Unlimited FPS", 88, 64));
+    append(expected, make_bronze_letters("off", 220, 64));
 
     expected.push_back(MakeLetter(12, 200, 32, center));
     EXPECT_THAT(menu.Layout(0.0, options), ElementsAreArray(expected));
-
-    // no limit says so, with the knob at the right end
-    options.frame_limit = 0.0f;
-    const std::vector<HudPicture> unlimited = menu.Layout(0.0, options);
-    const std::vector<HudPicture> said = make_bronze_letters("Max FPS unlimited", 56, 56);
-    EXPECT_TRUE(std::ranges::search(unlimited, said).begin() != unlimited.end());
-    EXPECT_THAT(unlimited, ::testing::Contains(MakeLetter(131, 220 + 72, 56, center)));
 
     // a size that was never chosen says so
     options.window_width = 0.0f;
     const std::vector<HudPicture> unset = menu.Layout(0.0, options);
     const std::vector<HudPicture> words = make_bronze_letters("as started", 220, 40);
     EXPECT_TRUE(std::ranges::search(unset, words).begin() != unset.end());
+  }
+
+  TEST(MenuTest, GreysOutTheSizeWithoutBordersAndTheLimitWhenThereIsNone)
+  {
+    Menu menu = make_menu_in_video();
+    MenuOptions options;
+    options.window_mode = 1.0f;
+    options.window_width = 1920.0f;
+    options.window_height = 1080.0f;
+    options.frame_limit = 60.0f;
+    options.unlimited_frames = true;
+
+    // in the plain letters, where the others are in the coloured ones, and
+    // the slider, which has no plain letters, is not there
+    std::vector<HudPicture> expected = {
+      MakePicture("gfx/qplaque.lmp", 16, 4, center),
+      MakePicture("gfx/vidmodes.lmp", 52, 4, center),
+    };
+    append(expected, make_bronze_letters("Video Mode", 112, 32));
+    append(expected, make_bronze_letters("borderless", 220, 32));
+    append(expected, MakeLetters("Resolution", 112, 40, center));
+    append(expected, MakeLetters("1920x1080", 220, 40, center));
+    append(expected, make_bronze_letters("Vertical Sync", 88, 48));
+    append(expected, make_bronze_letters("off", 220, 48));
+    append(expected, MakeLetters("Max FPS 60", 112, 56, center));
+    append(expected, make_bronze_letters("Unlimited FPS", 88, 64));
+    append(expected, make_bronze_letters("on", 220, 64));
+    expected.push_back(MakeLetter(12, 200, 32, center));
+    EXPECT_THAT(menu.Layout(0.0, options), ElementsAreArray(expected));
+  }
+
+  TEST(MenuOptionsTest, KeepsTheNumberOfTheLimitWhileThereIsNone)
+  {
+    MenuOptions options;
+    EXPECT_FALSE(options.HasFrameLimit()) << "as the game was started, until the host says what that is";
+
+    EXPECT_TRUE(options.Set("vid_maxfps", 90.0f));
+    EXPECT_TRUE(options.HasFrameLimit());
+    EXPECT_EQ(options.GetFrameLimit(), 90);
+
+    EXPECT_TRUE(options.Set("vid_unlimited", 1.0f));
+    EXPECT_EQ(options.GetFrameLimit(), 0) << "none";
+    EXPECT_EQ(options.frame_limit, 90.0f);
+
+    EXPECT_TRUE(options.Set("vid_unlimited", 0.0f));
+    EXPECT_EQ(options.GetFrameLimit(), 90);
+
+    // held to what a limit can be
+    options.frame_limit = 12.0f;
+    EXPECT_EQ(options.GetFrameLimit(), 30);
+    options.frame_limit = 1000.0f;
+    EXPECT_EQ(options.GetFrameLimit(), 300);
+  }
+
+  TEST(MenuOptionsTest, ReadsALimitOfNoneOfAnOlderFileAsNoLimit)
+  {
+    // 0 was no limit before there was a setting of its own for it
+    MenuOptions options;
+    EXPECT_TRUE(options.Set("vid_maxfps", 0.0f));
+    EXPECT_TRUE(options.unlimited_frames);
+    EXPECT_EQ(options.GetFrameLimit(), 0);
+    EXPECT_LT(options.frame_limit, 0.0f) << "the number is still to be chosen";
   }
 
   TEST(MenuOptionsTest, SetsTheVideoSettingsByTheirNames)

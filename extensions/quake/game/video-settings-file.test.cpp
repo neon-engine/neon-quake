@@ -58,8 +58,12 @@ namespace
   TEST(VideoSettingsFileTest, WritesNoLimitAsNoneAndHoldsANumberToWhatTheEngineTakes)
   {
     MenuOptions options;
-    options.frame_limit = 0.0f;
-    EXPECT_NE(VideoSettingsFile::Write(options).find("  max_fps: 0\n"), std::string::npos);
+    options.frame_limit = 90.0f;
+    options.unlimited_frames = true;
+    EXPECT_NE(VideoSettingsFile::Write(options).find("  max_fps: 0\n"), std::string::npos) << "whatever the number";
+
+    options.unlimited_frames = false;
+    EXPECT_NE(VideoSettingsFile::Write(options).find("  max_fps: 90\n"), std::string::npos);
     options.frame_limit = 12.0f;
     EXPECT_NE(VideoSettingsFile::Write(options).find("  max_fps: 30\n"), std::string::npos);
     options.frame_limit = 1000.0f;

@@ -56,15 +56,8 @@ namespace quake
 
       text += "\nrendering:\n";
       text += std::string("  vsync: ") + (options.vertical_sync ? "true" : "false") + "\n";
-      if (options.frame_limit >= 0.0f)
-      {
-        // none, or a number the engine takes
-        const int limit = !(options.frame_limit > 0.0f)
-                            ? 0
-                            : static_cast<int>(std::clamp(
-                              options.frame_limit, MenuOptions::least_frame_limit, MenuOptions::most_frame_limit));
-        text += "  max_fps: " + std::to_string(limit) + "\n";
-      }
+      // none, or a number the engine takes
+      if (options.HasFrameLimit()) { text += "  max_fps: " + std::to_string(options.GetFrameLimit()) + "\n"; }
       return text;
     }
   };

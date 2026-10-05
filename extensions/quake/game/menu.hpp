@@ -51,12 +51,17 @@ namespace quake
     static constexpr std::int32_t option_items = 8;
     static constexpr std::int32_t option_rows_shown = option_items + 1;
 
-    /// The mode of the window, its size, vertical sync, and the most frames
-    /// a second.
-    static constexpr std::int32_t video_items = 4;
+    /// The mode of the window, its size, vertical sync, the most frames a
+    /// second, and whether there is no limit to them.
+    static constexpr std::int32_t video_items = 5;
 
-    /// Which of them the slider of the frame limit is, the last.
-    static constexpr std::int32_t frame_limit_item = video_items - 1;
+    /// Which of them the size of the window is, and which the slider of
+    /// the frame limit. Each is greyed out and passed over by the cursor
+    /// while it changes nothing: the size while the window has no borders
+    /// and covers its display whatever its size, the slider while there is
+    /// no limit.
+    static constexpr std::int32_t window_size_item = 1;
+    static constexpr std::int32_t frame_limit_item = 3;
     static constexpr std::int32_t help_pages = 6;
 
     /// How many letters of what a saved game says about itself are
@@ -152,6 +157,10 @@ namespace quake
     std::vector<MenuAction> PressOnSlots(MenuKey key, const MenuGame &game);
     std::vector<MenuAction> PressOnOptions(MenuKey key, const MenuOptions &options);
     std::vector<MenuAction> PressOnVideo(MenuKey key, const MenuOptions &options, const MenuGame &game);
+
+    /// Whether a video setting changes anything as the options are, see
+    /// `window_size_item`.
+    [[nodiscard]] static bool IsVideoItemOn(std::int32_t item, const MenuOptions &options);
     std::vector<MenuAction> PressOnHelp(MenuKey key);
     std::vector<MenuAction> PressOnQuit(MenuKey key);
 

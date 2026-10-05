@@ -173,17 +173,16 @@ namespace quake
     }
 
     /// The places the slider of the frame limit has: one for every ten
-    /// frames a second from the least to the most, and one more at its
-    /// right end for no limit.
+    /// frames a second from the least to the most.
     constexpr std::int32_t frame_limit_places =
       static_cast<std::int32_t>(
-        (MenuOptions::most_frame_limit - MenuOptions::least_frame_limit) / MenuOptions::frame_limit_step) + 2;
+        (MenuOptions::most_frame_limit - MenuOptions::least_frame_limit) / MenuOptions::frame_limit_step) + 1;
 
-    /// The place of a frame limit on its slider. No limit, 0 and below, is
-    /// the last.
-    std::int32_t frame_limit_place(const float limit)
+    /// The place of a frame limit on its slider. What is no limit is at
+    /// the usual one.
+    std::int32_t frame_limit_place(float limit)
     {
-      if (!(limit > 0.0f)) { return frame_limit_places - 1; }
+      if (!(limit > 0.0f)) { limit = MenuOptions::usual_frame_limit; }
 
       const float held = std::clamp(limit, MenuOptions::least_frame_limit, MenuOptions::most_frame_limit);
       return static_cast<std::int32_t>(
@@ -194,8 +193,6 @@ namespace quake
     float frame_limit_at(const std::int32_t place)
     {
       const std::int32_t held = std::clamp(place, 0, frame_limit_places - 1);
-      if (held == frame_limit_places - 1) { return 0.0f; }
-
       return MenuOptions::least_frame_limit + static_cast<float>(held) * MenuOptions::frame_limit_step;
     }
 
@@ -471,6 +468,14 @@ namespace quake
     return actions;
   }
 
+  bool Menu::IsVideoItemOn(const std::int32_t item, const MenuOptions &options)
+  {
+    // a window without borders covers its display whatever its size
+    if (item == window_size_item) { return static_cast<std::int32_t>(options.window_mode) != 1; }
+    if (item == frame_limit_item) { return !options.unlimited_frames; }
+    return true;
+  }
+
   std::vector<MenuAction> Menu::PressOnVideo(const MenuKey key, const MenuOptions &options, const MenuGame &game)
   {
     std::vector<MenuAction> actions;
@@ -485,6 +490,9 @@ namespace quake
       // the sound comes also when nothing can change, as with a slider at
       // its end
       actions.push_back(sound(MenuAction::change_sound));
+
+      // a setting that is greyed out stays as it is
+      if (!IsVideoItemOn(_video_cursor, options)) { return; }
 
       switch (_video_cursor)
       {
@@ -520,10 +528,24 @@ namespace quake
       case 2:
         set(MenuOptions::vertical_sync_name, options.vertical_sync ? 0.0f : 1.0f);
         break;
-      default:
+      case frame_limit_item:
         set(MenuOptions::frame_limit_name, frame_limit_at(frame_limit_place(options.frame_limit) + direction));
         break;
+      default:
+        set(MenuOptions::unlimited_frames_name, options.unlimited_frames ? 0.0f : 1.0f);
+        break;
       }
+    };
+
+    // the cursor goes to the next setting that changes something
+    const auto move = [&](const std::int32_t direction)
+    {
+      for (std::int32_t tried = 0; tried < video_items; tried++)
+      {
+        _video_cursor = wrap(_video_cursor + direction, video_items);
+        if (IsVideoItemOn(_video_cursor, options)) { break; }
+      }
+      actions.push_back(sound(MenuAction::move_sound));
     };
 
     switch (key)
@@ -533,13 +555,11 @@ namespace quake
       break;
 
     case MenuKey::Up:
-      _video_cursor = wrap(_video_cursor - 1, video_items);
-      actions.push_back(sound(MenuAction::move_sound));
+      move(-1);
       break;
 
     case MenuKey::Down:
-      _video_cursor = wrap(_video_cursor + 1, video_items);
-      actions.push_back(sound(MenuAction::move_sound));
+      move(1);
       break;
 
     case MenuKey::Left:
@@ -870,20 +890,31 @@ namespace quake
     // the limit is said with its name, since its slider is where the
     // words of the others are
     const std::int32_t place = frame_limit_place(options.frame_limit);
-    const std::string limit = "Max FPS " + (place == frame_limit_places - 1
-                                              ? std::string("unlimited")
-                                              : std::to_string(static_cast<std::int32_t>(frame_limit_at(place))));
+    const std::string limit = "Max FPS " + std::to_string(static_cast<std::int32_t>(frame_limit_at(place)));
 
     const std::array<std::pair<std::string_view, std::string_view>, video_items> rows = {{
       {"Video Mode", modes[mode]},
       {"Resolution", size},
       {"Vertical Sync", options.vertical_sync ? "on" : "off"},
       {limit, ""},
+      {"Unlimited FPS", options.unlimited_frames ? "on" : "off"},
     }};
     for (std::size_t i = 0; i < rows.size(); i++)
     {
       const std::int32_t y = first_row_y + static_cast<std::int32_t>(i) * line_height;
-      add_bronze_line(pictures, rows[i].first, option_label_end - static_cast<std::int32_t>(rows[i].first.size()) * 8, y);
+      const std::int32_t label_x = option_label_end - static_cast<std::int32_t>(rows[i].first.size()) * 8;
+
+      // A setting that changes nothing as the others are is greyed out: in
+      // the plain letters, and a slider, which has no plain letters, is
+      // left away.
+      if (!IsVideoItemOn(static_cast<std::int32_t>(i), options))
+      {
+        HudText::AddLine(pictures, rows[i].first, label_x, y, anchor);
+        if (!rows[i].second.empty()) { HudText::AddLine(pictures, rows[i].second, option_value_x, y, anchor); }
+        continue;
+      }
+
+      add_bronze_line(pictures, rows[i].first, label_x, y);
       if (!rows[i].second.empty()) { add_bronze_line(pictures, rows[i].second, option_value_x, y); }
       else
       {
