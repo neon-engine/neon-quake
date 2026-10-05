@@ -1927,6 +1927,11 @@ namespace quake
     settings.skill = static_cast<int>(_level->builtins.GetVariables().GetFloat("skill"));
     settings.server_flags = _server_flags;
 
+    // The whole game is there, and not the shareware's first episode alone,
+    // when the archives hold gfx/pop.lmp: that is how the original tells.
+    // The game code reads it in the gates of start and elsewhere.
+    _level->builtins.GetVariables().Set("registered", data.Find("gfx/pop.lmp").empty() ? "0" : "1");
+
     LevelSpawning spawning(_level->machine);
     const LevelSpawningReport report = spawning.Spawn(text.entities, settings);
     for (const LevelFailure &failure : report.failures)
