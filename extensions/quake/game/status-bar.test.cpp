@@ -16,6 +16,7 @@ namespace
   using quake::HudPicture;
   using quake::HudPictureKind;
   using quake::MakeLetter;
+  using quake::MakeBackground;
   using quake::MakePicture;
   using quake::PlayerStats;
   using quake::QcItem;
@@ -71,7 +72,7 @@ namespace
 
     EXPECT_THAT(bar.Layout(make_fresh_player(), 5.0f, {}), ElementsAre(
       // what is carried: the shotgun in the hands, and the four counts
-      MakePicture("ibar", 0, 152),
+      MakeBackground("ibar", 0, 152),
       MakePicture("inv2_shotgun", 0, 160),
       MakeLetter(20, 18, 152),
       MakeLetter(23, 26, 152),
@@ -80,7 +81,7 @@ namespace
       MakeLetter(18, 170, 152),
 
       // no armour, in red; the best face; the health; the shells
-      MakePicture("sbar", 0, 176),
+      MakeBackground("sbar", 0, 176),
       MakePicture("anum_0", 72, 176),
       MakePicture("face1", 112, 176),
       MakePicture("num_1", 136, 176),
@@ -99,7 +100,7 @@ namespace
 
     const StatusBar bar;
     EXPECT_THAT(bar.Layout(stats, 0.0f, bar_only), ElementsAre(
-      MakePicture("sbar", 0, 176),
+      MakeBackground("sbar", 0, 176),
       MakePicture("anum_0", 72, 176),
       MakePicture("face4", 112, 176),
       MakePicture("anum_2", 160, 176),
@@ -234,7 +235,7 @@ namespace
     stats.items |= bits(QcItem::Armor2, QcItem::Invulnerability);
 
     EXPECT_THAT(bar.Layout(stats, 0.0f, bar_only), ElementsAre(
-      MakePicture("sbar", 0, 176),
+      MakeBackground("sbar", 0, 176),
       MakePicture("anum_6", 24, 176),
       MakePicture("anum_6", 48, 176),
       MakePicture("anum_6", 72, 176),
@@ -360,7 +361,7 @@ namespace
     stats.cells = -3;
 
     EXPECT_THAT(bar.Layout(stats, 0.0f, {}), ElementsAre(
-      MakePicture("ibar", 0, 152),
+      MakeBackground("ibar", 0, 152),
       MakeLetter(19, 10, 152),
       MakeLetter(18, 18, 152),
       MakeLetter(18, 26, 152),
@@ -369,7 +370,7 @@ namespace
       MakeLetter(27, 114, 152),
       MakeLetter(27, 122, 152),
       MakeLetter(18, 170, 152),
-      MakePicture("sbar", 0, 176),
+      MakeBackground("sbar", 0, 176),
       MakePicture("anum_0", 72, 176),
       MakePicture("face1", 112, 176),
       MakePicture("num_1", 136, 176),
@@ -407,18 +408,31 @@ namespace
     EXPECT_EQ(find_at(pictures, 312, 160), "sb_sigil4");
   }
 
+  TEST(StatusBarTest, DrawsTheBackgroundsSeeThroughAndWhatIsOnThemWhole)
+  {
+    const StatusBar bar;
+    const PlayerStats stats = make_fresh_player();
+
+    for (const HudPicture &picture : bar.Layout(stats, 0.0f, {.size = StatusBarSize::Full, .shows_scores = true}))
+    {
+      const bool is_background = picture.name == "sbar" || picture.name == "ibar" || picture.name == "scorebar";
+      EXPECT_EQ(picture.opacity, is_background ? StatusBar::background_opacity : 1.0f) << picture.name;
+    }
+    EXPECT_LT(StatusBar::background_opacity, 1.0f);
+  }
+
   TEST(StatusBarTest, ShowsTheBarsTheSizeAsksFor)
   {
     const StatusBar bar;
     const PlayerStats stats = make_fresh_player();
 
     const auto both = bar.Layout(stats, 0.0f, {.size = StatusBarSize::Full});
-    EXPECT_THAT(both, Contains(MakePicture("ibar", 0, 152)));
-    EXPECT_THAT(both, Contains(MakePicture("sbar", 0, 176)));
+    EXPECT_THAT(both, Contains(MakeBackground("ibar", 0, 152)));
+    EXPECT_THAT(both, Contains(MakeBackground("sbar", 0, 176)));
 
     const auto one = bar.Layout(stats, 0.0f, {.size = StatusBarSize::BarOnly});
-    EXPECT_THAT(one, Not(Contains(MakePicture("ibar", 0, 152))));
-    EXPECT_EQ(one.front(), MakePicture("sbar", 0, 176));
+    EXPECT_THAT(one, Not(Contains(MakeBackground("ibar", 0, 152))));
+    EXPECT_EQ(one.front(), MakeBackground("sbar", 0, 176));
 
     EXPECT_THAT(bar.Layout(stats, 0.0f, {.size = StatusBarSize::None}), IsEmpty());
 
@@ -441,8 +455,8 @@ namespace
     expected.insert(expected.end(), scores.begin(), scores.end());
     EXPECT_THAT(
       bar.Layout(stats, 61.0f, {.size = StatusBarSize::BarOnly, .shows_scores = true}), ElementsAreArray(expected));
-    EXPECT_THAT(plain, Contains(MakePicture("sbar", 0, 176)));
-    EXPECT_EQ(scores.front(), MakePicture("scorebar", 0, 88, quake::HudAnchor::Center));
+    EXPECT_THAT(plain, Contains(MakeBackground("sbar", 0, 176)));
+    EXPECT_EQ(scores.front(), MakeBackground("scorebar", 0, 88, quake::HudAnchor::Center));
 
     // without a bar the board is all there is
     EXPECT_THAT(
@@ -450,9 +464,9 @@ namespace
 
     // with what is carried above the bar
     const auto full = bar.Layout(stats, 61.0f, {.size = StatusBarSize::Full, .shows_scores = true});
-    EXPECT_EQ(full.front(), MakePicture("ibar", 0, 152));
-    EXPECT_THAT(full, Contains(MakePicture("sbar", 0, 176)));
-    EXPECT_THAT(full, Contains(MakePicture("scorebar", 0, 88, quake::HudAnchor::Center)));
+    EXPECT_EQ(full.front(), MakeBackground("ibar", 0, 152));
+    EXPECT_THAT(full, Contains(MakeBackground("sbar", 0, 176)));
+    EXPECT_THAT(full, Contains(MakeBackground("scorebar", 0, 88, quake::HudAnchor::Center)));
   }
 
   TEST(StatusBarTest, GivesItsPlaceToTheScoreboardForADeadPlayer)

@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "hud-picture.hpp"
+#include "status-bar.hpp"
 
 namespace quake
 {
@@ -17,6 +18,7 @@ namespace quake
     else { *stream << picture.name; }
     *stream << " at " << picture.x << ", " << picture.y
       << (picture.anchor == HudAnchor::Bottom ? " (bottom)" : " (centre)");
+    if (picture.opacity != 1.0f) { *stream << " at opacity " << picture.opacity; }
   }
 
   /// A picture at a place, for what a test expects.
@@ -27,6 +29,17 @@ namespace quake
     const HudAnchor anchor = HudAnchor::Bottom)
   {
     return {.name = name, .x = x, .y = y, .anchor = anchor};
+  }
+
+  /// The background of a bar at a place, drawn see-through as the status
+  /// bar draws them, for what a test expects.
+  [[nodiscard]] inline HudPicture MakeBackground(
+    const std::string_view name,
+    const std::int32_t x,
+    const std::int32_t y,
+    const HudAnchor anchor = HudAnchor::Bottom)
+  {
+    return {.name = name, .x = x, .y = y, .anchor = anchor, .opacity = StatusBar::background_opacity};
   }
 
   /// Some rows of a picture at a place, for what a test expects.

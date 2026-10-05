@@ -83,6 +83,12 @@ namespace quake
     static constexpr std::int32_t low_armor = 25;
     static constexpr std::int32_t low_ammo = 10;
 
+    /// How much the backgrounds of the bars, `sbar`, `ibar`, and `scorebar`,
+    /// cover the view behind them: see-through, as QuakeSpasm and vkQuake
+    /// draw them by default (`scr_sbaralpha`). What is on them, the numbers,
+    /// the face, and the icons, covers all.
+    static constexpr float background_opacity = 0.75f;
+
     StatusBar();
 
     /// Looks at the stats of a frame for items that are new since the

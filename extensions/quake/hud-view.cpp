@@ -251,6 +251,7 @@ namespace quake
       wanted.width = static_cast<std::int32_t>(std::round(left + width * by)) - wanted.left;
       wanted.height = static_cast<std::int32_t>(std::round(top + height * by)) - wanted.top;
       wanted.order = order++;
+      wanted.opacity = command.opacity;
 
       std::vector<Slot> &slots = _slots[path];
       std::size_t &used = _used[path];
@@ -270,6 +271,7 @@ namespace quake
         made.height = -1;
         made.left = std::numeric_limits<std::int32_t>::min();
         made.top = std::numeric_limits<std::int32_t>::min();
+        made.opacity = -1.0f;
         slots.push_back(made);
       }
 
@@ -299,6 +301,11 @@ namespace quake
       {
         slot.order = wanted.order;
         world.SetUiStyle(slot.element, "z-index", std::to_string(slot.order));
+      }
+      if (slot.opacity != wanted.opacity)
+      {
+        slot.opacity = wanted.opacity;
+        world.SetUiStyle(slot.element, "opacity", std::to_string(slot.opacity));
       }
       if (!slot.is_visible)
       {

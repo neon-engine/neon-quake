@@ -15,6 +15,7 @@ namespace
 {
   using quake::HudPicture;
   using quake::MakeLetters;
+  using quake::MakeBackground;
   using quake::MakePicture;
   using quake::PlayerStats;
   using quake::Scoreboard;
@@ -28,7 +29,7 @@ namespace
     const std::string_view name,
     const std::int32_t name_x)
   {
-    std::vector<HudPicture> all = {MakePicture("scorebar", 0, 176)};
+    std::vector<HudPicture> all = {MakeBackground("scorebar", 0, 176)};
     for (const auto &list : {
            MakeLetters(monsters, 8, 180), MakeLetters(secrets, 8, 188), MakeLetters(time, 184, 180),
            MakeLetters(name, name_x, 188),

@@ -67,6 +67,11 @@ namespace quake
     std::int32_t first_row = 0;
     std::int32_t rows = 0;
 
+    /// How much of it covers what is behind it, from 0 to 1. The status
+    /// bar's backgrounds are drawn see-through, as the ports of today draw
+    /// them; anything else covers all.
+    float opacity = 1.0f;
+
     bool operator==(const HudPicture &) const = default;
   };
 } // quake

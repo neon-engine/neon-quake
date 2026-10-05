@@ -14,7 +14,7 @@ namespace quake
   std::vector<HudPicture> Scoreboard::Layout(const PlayerStats &stats, const HudAnchor anchor, const std::int32_t top)
   {
     std::vector<HudPicture> pictures;
-    pictures.push_back({.name = "scorebar", .x = 0, .y = top, .anchor = anchor});
+    pictures.push_back({.name = "scorebar", .x = 0, .y = top, .anchor = anchor, .opacity = StatusBar::background_opacity});
 
     // snprintf never writes past the array, and says how much it wanted to
     std::array<char, 64> line{};

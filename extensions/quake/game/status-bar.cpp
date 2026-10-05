@@ -110,7 +110,7 @@ namespace quake
   void StatusBar::AddInventory(std::vector<HudPicture> &pictures, const PlayerStats &stats, const float time) const
   {
     constexpr std::int32_t icons_top = inventory_top + 8;
-    pictures.push_back({.name = "ibar", .x = 0, .y = inventory_top});
+    pictures.push_back({.name = "ibar", .x = 0, .y = inventory_top, .opacity = background_opacity});
 
     for (std::size_t weapon = 0; weapon < weapon_count; weapon++)
     {
@@ -171,7 +171,7 @@ namespace quake
 
   void StatusBar::AddBar(std::vector<HudPicture> &pictures, const PlayerStats &stats, const float time) const
   {
-    pictures.push_back({.name = "sbar", .x = 0, .y = top});
+    pictures.push_back({.name = "sbar", .x = 0, .y = top, .opacity = background_opacity});
 
     // the armour: who can not be hurt has 666 of it, in red
     if (HasItem(stats.items, QcItem::Invulnerability))
