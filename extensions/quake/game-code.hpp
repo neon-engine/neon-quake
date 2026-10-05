@@ -481,6 +481,11 @@ namespace quake
     /// the original has it.
     static constexpr float weapon_bob = 0.4f;
 
+    /// How far behind where it is a model of brushes is drawn, each way, in
+    /// units of the game: what the GL ports take, 1/32, too little to see
+    /// and enough that one flush with the level is drawn behind it.
+    static constexpr float brush_depth_step = 1.0f / 32.0f;
+
     /// How far the view leans into a sidestep, in degrees, the speed at
     /// which it leans all the way, and how far it lies over when the player
     /// is dead.

@@ -855,7 +855,16 @@ namespace quake
 
   void GameCode::Place(const Shown &shown, const Vector &origin, const Vector &angles) const
   {
-    const BspVector place = QuakeSpace::ToEnginePosition({origin[0], origin[1], origin[2]});
+    // A model of brushes is drawn a little behind where it is, as the GL
+    // ports draw it: one that lies flush with the level, as the barrier of
+    // e1m1 in the floor before it rises, is then always behind the level and
+    // never fights it for depth. Where it is in the game does not change.
+    BspVector at = {origin[0], origin[1], origin[2]};
+    if (shown.is_part || shown.model.ends_with(".bsp"))
+    {
+      at = {at.x - brush_depth_step, at.y - brush_depth_step, at.z - brush_depth_step};
+    }
+    const BspVector place = QuakeSpace::ToEnginePosition(at);
     _world->SetVector3(shown.entity, _position_field, {place.x, place.y, place.z});
 
     // The angles of the game are pitch, yaw, and roll: around what points
