@@ -92,6 +92,8 @@ neon_add_project(quake
         extensions/quake/sound-view.hpp
         extensions/quake/sprite-view.cpp
         extensions/quake/sprite-view.hpp
+        extensions/quake/start-screen.cpp
+        extensions/quake/start-screen.hpp
 )
 
 # The game is started as neon-quake, not as the runtime it is made of: the
@@ -151,8 +153,18 @@ add_custom_target(quake-shaders ALL DEPENDS ${QUAKE_SHADER_OUTPUTS})
 add_dependencies(quake-extension quake-shaders)
 
 
-set(QUAKE_TEST_DATA_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/assets/id1" CACHE PATH
-        "A folder of game data to test the formats with: the id1 put under the assets, or lq1 of a checkout of LibreQuake")
+# The data the tests read by default: an id1 put straight under
+# assets/basedirs/, or else that of the first copy there, by its name.
+set(QUAKE_DEFAULT_TEST_DATA "${CMAKE_CURRENT_LIST_DIR}/assets/basedirs/id1")
+if (NOT IS_DIRECTORY "${QUAKE_DEFAULT_TEST_DATA}")
+  file(GLOB QUAKE_BASEDIR_DATA LIST_DIRECTORIES true "${CMAKE_CURRENT_LIST_DIR}/assets/basedirs/*/id1")
+  list(SORT QUAKE_BASEDIR_DATA)
+  if (QUAKE_BASEDIR_DATA)
+    list(GET QUAKE_BASEDIR_DATA 0 QUAKE_DEFAULT_TEST_DATA)
+  endif ()
+endif ()
+set(QUAKE_TEST_DATA_DIRECTORY "${QUAKE_DEFAULT_TEST_DATA}" CACHE PATH
+        "A folder of game data to test the formats with: an id1 under assets/basedirs/, or lq1 of a checkout of LibreQuake")
 
 # Tests of the formats and of the game. They need GoogleTest, which is taken from the engine's
 # checkout as sources; nothing of the engine itself is built. `ctest` runs

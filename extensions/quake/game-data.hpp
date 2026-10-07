@@ -25,17 +25,21 @@ namespace quake
     PakLayers _paks;
     Palette _palette;
 
-  public:
-    /// The folder the data is looked for in, under the assets of the game
-    /// next to the runtime.
-    static constexpr std::string_view folder = "assets://id1/";
+    // the folder id1 the data was read from, ending with a slash
+    std::string _folder;
 
-    /// Reads `pak0.pak`, `pak1.pak`, and so on, for as long as there is a
-    /// next one, in any letter case (`PAK0.PAK` as on Steam), and the
-    /// palette out of them. Returns false when there is
-    /// no archive, one cannot be read, or they hold no palette, and says
-    /// which in `error`.
-    bool Load(const neon::extension::World &world, std::string &error);
+  public:
+    /// Reads `pak0.pak`, `pak1.pak`, and so on from the folder `id1` of a
+    /// copy of the game's data, `assets://basedirs/steam/id1/`, for as long
+    /// as there is a next one, in any letter case (`PAK0.PAK` as on Steam),
+    /// and the palette out of them. Returns false when there is no archive,
+    /// one cannot be read, or they hold no palette, and says which in
+    /// `error`.
+    bool Load(const neon::extension::World &world, const std::string &folder, std::string &error);
+
+    /// The folder the data was read from, where the files that are not in
+    /// the archives are too, such as the music.
+    [[nodiscard]] const std::string &GetFolder() const;
 
     /// The bytes of a file by the name the game knows it by, such as
     /// `maps/start.bsp`, from the last archive that has it. Empty when none

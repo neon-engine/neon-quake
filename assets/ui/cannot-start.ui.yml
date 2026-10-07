@@ -1,0 +1,58 @@
+# What the game shows when it cannot start, in place of a screen that stays
+# black: the reason, which the extension writes into `reason`, and a button
+# that closes the game, see start-screen.cpp. It has the focus, so enter or
+# the lower face button of a controller closes the game at once.
+
+ui: cannot-start
+version: 1
+
+reference_size: [1920, 1080]
+modal: true
+cancel: none
+
+root:
+  type: panel
+  width: 100%
+  height: 100%
+  justify_content: center
+  align_items: center
+  background_color: "#000000"
+  children:
+    - type: panel
+      padding: 32
+      gap: 16
+      max_width: 960
+      flex_direction: column
+      align_items: stretch
+      background_color: "#2a2018"
+      border_radius: 8
+      children:
+        - type: label
+          text: Quake cannot start
+          font_size: 32
+          font_weight: bold
+          text_align: center
+        - type: label
+          name: reason
+          text: ""
+          font_size: 20
+          text_align: center
+          white_space: normal
+        - type: button
+          name: exit
+          text: Exit
+          autofocus: true
+          border_radius: 8
+          margin_top: 8
+        - type: label
+          hidden: "{gamepad}"
+          text: "Enter exits"
+          font_size: 14
+          color: "#ffffff80"
+          text_align: center
+        - type: label
+          hidden: "{!gamepad}"
+          text: "A exits"
+          font_size: 14
+          color: "#ffffff80"
+          text_align: center

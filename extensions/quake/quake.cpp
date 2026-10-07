@@ -5,8 +5,10 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include <neon/extension/neon-extension.hpp>
@@ -16,6 +18,10 @@
 #include "level-view.hpp"
 #include "model-view.hpp"
 #include "sound-view.hpp"
+#include "start-screen.hpp"
+#include "game/basedir-choice.hpp"
+#include "game/basedir-file.hpp"
+#include "game/basedir-list.hpp"
 
 namespace quake
 {
@@ -59,6 +65,22 @@ namespace quake
     }
   };
 
+  /// Lets what is shown before the game starts take its turn in every
+  /// frame: the menu that asks which data to play.
+  class Starting final : public neon::extension::System
+  {
+    std::function<void(neon::extension::World &)> _each_frame;
+
+  public:
+    explicit Starting(std::function<void(neon::extension::World &)> each_frame)
+      : _each_frame(std::move(each_frame)) {}
+
+    void Update(neon::extension::World &world, const double delta_time) override
+    {
+      _each_frame(world);
+    }
+  };
+
   class Quake final : public neon::extension::Extension
   {
     GameData _data;
@@ -67,7 +89,61 @@ namespace quake
     SoundView _sounds;
     SpriteView _sprites;
     GameCode _code;
+    StartScreen _screen;
     bool _has_data = false;
+
+    // the copies of the data under assets://basedirs/, and which is played
+    std::vector<Basedir> _basedirs;
+    BasedirChoice _choice;
+
+    // why the game cannot start, when it cannot
+    std::string _problem;
+
+    /// What the player chose before, from user://basedir.yml.
+    static std::string ReadRemembered(const neon::extension::World &world)
+    {
+      std::vector<std::uint8_t> contents;
+      const std::string path(BasedirFile::path);
+      if (!world.FileExists(path) || !world.ReadFile(path, contents)) { return ""; }
+      return BasedirFile::Read(std::string_view(reinterpret_cast<const char *>(contents.data()), contents.size()));
+    }
+
+    /// Reads the data of a copy, and keeps what the player saves of it in a
+    /// folder of its own.
+    void LoadData(const neon::extension::World &world, const Basedir &basedir)
+    {
+      std::string error;
+      _has_data = _data.Load(world, basedir.data_folder, error);
+      if (!_has_data)
+      {
+        _problem = "The data in assets/basedirs/" + basedir.name + " cannot be used: " + error;
+        return;
+      }
+
+      _sounds.SetDataFolder(_data.GetFolder());
+      _code.SetUserFolder(basedir.UserFolder());
+      world.Info("Playing the data of " + basedir.name + ", from " + basedir.data_folder + ", kept under " +
+        basedir.UserFolder());
+    }
+
+    /// Takes the copy the player picked from the menu, once there is one.
+    void PickBasedir(neon::extension::World &world)
+    {
+      const int picked = _screen.TakePicked(world);
+      if (picked < 0) { return; }
+
+      const Basedir &basedir = _basedirs[static_cast<std::size_t>(picked)];
+      const std::string text = BasedirFile::Write(basedir.name);
+      world.WriteFile(std::string(BasedirFile::path), std::vector<std::uint8_t>(text.begin(), text.end()));
+
+      LoadData(world, basedir);
+      if (!_has_data)
+      {
+        _screen.ShowProblem(world, _problem);
+        return;
+      }
+      StartGame(world);
+    }
 
     /// A file the player may write to choose the level that is shown: its
     /// first line is the name of a level, such as `maps/lq_e1m1.bsp`.
@@ -114,23 +190,9 @@ namespace quake
       return map;
     }
 
-  public:
-    bool Initialize(neon::extension::World &world) override
+    /// Greets the player, or starts the level that was asked for.
+    void StartGame(neon::extension::World &world)
     {
-      // The game starts without its data and says so, since the data is the
-      // player's own and may not be there yet.
-      std::string error;
-      _has_data = _data.Load(world, error);
-      if (!_has_data) { world.Warn("The data of the game is not there: " + error + ". See README.md"); }
-
-      AddSystem<GameRunning>("GameRunning", &_level, &_models, &_code);
-      return true;
-    }
-
-    void Start(neon::extension::World &world) override
-    {
-      if (!_has_data) { return; }
-
       // The game greets a player with its menu over a recording. A level
       // that was asked for by name, and a tour, start at once.
       if (ReadWantedLevel(world).empty() && std::getenv("QUAKE_TOUR") == nullptr &&
@@ -151,6 +213,44 @@ namespace quake
       {
         world.Warn("The level is shown without the game: " + error);
       }
+    }
+
+  public:
+    bool Initialize(neon::extension::World &world) override
+    {
+      // The copies of the data the player put under assets://basedirs/,
+      // each a folder with an id1 in it, and which of them is played: the
+      // only one, the one chosen before, or the one the player picks.
+      _basedirs = BasedirList::Find(
+        world.ListFolders(std::string(BasedirList::folder)),
+        [&world](const std::string &folder) { return world.ListFolders(folder); });
+      _choice = BasedirChoice::Of(_basedirs, ReadRemembered(world));
+      if (!_choice.warning.empty()) { world.Warn(_choice.warning); }
+      _problem = _choice.problem;
+
+      if (_choice.chosen >= 0) { LoadData(world, _basedirs[static_cast<std::size_t>(_choice.chosen)]); }
+
+      AddSystem<Starting>("Starting", [this](neon::extension::World &each) { PickBasedir(each); });
+      AddSystem<GameRunning>("GameRunning", &_level, &_models, &_code);
+      return true;
+    }
+
+    void Start(neon::extension::World &world) override
+    {
+      // The game does not start without its data, which is the player's own
+      // and may not be there yet: it says why, and closes when asked.
+      if (_choice.asks)
+      {
+        _screen.ShowPicker(world, _basedirs);
+        return;
+      }
+      if (!_has_data)
+      {
+        _screen.ShowProblem(world, _problem);
+        return;
+      }
+
+      StartGame(world);
     }
   };
 } // quake

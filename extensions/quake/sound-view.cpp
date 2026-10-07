@@ -138,6 +138,11 @@ namespace quake
     _playing.push_back({Make(world, name, path, place, volume, far, true, key), 0, 0, true, key});
   }
 
+  void SoundView::SetDataFolder(const std::string &folder)
+  {
+    _data_folder = folder;
+  }
+
   void SoundView::PlayMusic(const World &world, const int track)
   {
     if (track == _track && _music != 0) { return; }
@@ -151,7 +156,8 @@ namespace quake
     const std::string number = (track < 10 ? "0" : "") + std::to_string(track);
     // found in any case, as the archives are: a copy of the music may name
     // it Track02.OGG, and the engine opens a file only by its name on disk
-    const std::string music = std::string(GameData::folder) + "music/";
+    if (_data_folder.empty()) { return; }
+    const std::string music = _data_folder + "music/";
     const std::optional<std::string> name = FindAnyCaseName(world.ListFiles(music), "track" + number + ".ogg");
     if (!name) { return; }
     const std::string path = music + *name;

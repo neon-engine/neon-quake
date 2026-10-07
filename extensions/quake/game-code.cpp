@@ -1391,10 +1391,20 @@ namespace quake
     return game;
   }
 
-  std::string GameCode::PathOfSave(const std::size_t slot)
+  void GameCode::SetUserFolder(const std::string &folder)
+  {
+    _user_folder = folder;
+  }
+
+  std::string GameCode::PathOfSave(const std::size_t slot) const
   {
     // as the original names them, s0.sav to s11.sav
-    return std::string(saves_folder) + "s" + std::to_string(slot) + ".sav";
+    return _user_folder + "saves/s" + std::to_string(slot) + ".sav";
+  }
+
+  std::string GameCode::PathOfOptions() const
+  {
+    return _user_folder + "quake.cfg";
   }
 
   void GameCode::ReadSaves()
@@ -1421,7 +1431,7 @@ namespace quake
   void GameCode::ReadOptions()
   {
     std::vector<std::uint8_t> bytes;
-    if (!_world->FileExists(std::string(options_file)) || !_world->ReadFile(std::string(options_file), bytes)) { return; }
+    if (!_world->FileExists(PathOfOptions()) || !_world->ReadFile(PathOfOptions(), bytes)) { return; }
 
     // a line for each: its name, a space, its value
     const std::string text(bytes.begin(), bytes.end());
@@ -1459,7 +1469,7 @@ namespace quake
     add(MenuOptions::vertical_sync_name, _options.vertical_sync ? 1.0f : 0.0f);
     add(MenuOptions::frame_limit_name, _options.frame_limit);
     add(MenuOptions::unlimited_frames_name, _options.unlimited_frames ? 1.0f : 0.0f);
-    _world->WriteFile(std::string(options_file), std::vector<std::uint8_t>(text.begin(), text.end()));
+    _world->WriteFile(PathOfOptions(), std::vector<std::uint8_t>(text.begin(), text.end()));
     WriteVideoSettings();
   }
 

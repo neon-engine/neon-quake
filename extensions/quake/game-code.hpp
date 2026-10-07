@@ -177,12 +177,15 @@ namespace quake
     std::array<float, 16> _came_with{};
 
     /// Where the saved games and the settings of the menu are kept: files
-    /// of the player's, which the next run of the game finds.
-    static constexpr std::string_view saves_folder = "user://saves/";
-    static constexpr std::string_view options_file = "user://quake.cfg";
+    /// of the player's, which the next run of the game finds, in the folder
+    /// of the copy of the data that is played, `user://<basedir>/`.
+    std::string _user_folder = "user://";
 
     /// The file of a place of the menu.
-    [[nodiscard]] static std::string PathOfSave(std::size_t slot);
+    [[nodiscard]] std::string PathOfSave(std::size_t slot) const;
+
+    /// The file of the settings of the menu.
+    [[nodiscard]] std::string PathOfOptions() const;
 
     /// Reads the saved games a run before left, for the menu to offer.
     void ReadSaves();
@@ -660,6 +663,11 @@ namespace quake
     void TextPrinted(const ServerMessageTarget &target, std::string_view text) override;
 
     void ServerCommand(std::string_view text) override;
+
+    /// Keeps the saved games and the settings of the menu in a folder of
+    /// the player's, `user://<basedir>/`, so that each copy of the data has
+    /// its own. Before StartTitle() or Start().
+    void SetUserFolder(const std::string &folder);
 
     /// Greets a player as the original does: with the menu, over the
     /// recordings the data names, one after the other, until a game is

@@ -41,7 +41,7 @@ assets/                     the game, assets://
   scenes/                   the scene it starts with
   ui/                       the status bar
   prompts/                  the pictures of the buttons of gamepads
-  id1/                      the data of the game, which a player brings
+  basedirs/<name>/id1/      the data of the game, which a player brings, one copy or several
 extensions/quake/           the extension, extensions://quake/: its code, and what it needs to run
   extension.yml             the recipe of the extension
   quake.cpp                 its code: what it brings to the engine
@@ -192,13 +192,27 @@ are left out, as are faces painted `trigger`, `clip`, or `skip`.
 ## The data of the game
 
 The repository carries no data of any game. Whoever builds it puts an `id1`
-folder of their own under `assets/id1/`: that of the
-original game, or of [LibreQuake](https://github.com/lavenderdotpet/LibreQuake),
-a free game made for this engine's kind. Git leaves the folder alone, and
-the build copies it, with the rest of `assets/`, to where
-the game is put together.
+folder of their own in a folder named as they like under `assets/basedirs/`,
+as Quake's `-basedir` names the folder `id1` is in: the original game's in
+`assets/basedirs/steam/id1/`, or
+[LibreQuake](https://github.com/lavenderdotpet/LibreQuake)'s, a free game
+made for this engine's kind, in `assets/basedirs/librequake/id1/`. Git leaves
+them alone, and the build copies them, with the rest of `assets/`, to where
+the game is put together; one put there after the build is found as well.
 
-The extension reads it as `assets://id1/pak0.pak`,
+| There is | The game |
+|---|---|
+| One copy | Plays it |
+| Several | Asks which, with a menu that works with a controller, and remembers the answer in `user://basedir.yml`. Remove the file, or write another name in it, to change |
+| An `id1` straight in `assets/basedirs/` | Plays it alone, whatever else is there, as `default` |
+| None, or a copy whose archives cannot be read | Says why on the screen, and closes with a button |
+
+Each copy keeps its saved games and the options of its menu apart, in
+`user://<name>/saves/` and `user://<name>/quake.cfg`. Choosing a copy on the
+command line, and asking for the menu even when one was chosen, waits for
+the engine to hand options to an extension.
+
+The extension reads the data as `assets://basedirs/<name>/id1/pak0.pak`,
 `pak1.pak`, and so on, each archive as the file it is, and takes it apart
 itself; the engine knows nothing of archives. The data is not ours and is
 never committed.
@@ -208,7 +222,7 @@ letter case: the original release on Steam has `PAK0.PAK` and `PAK1.PAK`, and
 they are used as they are. The engine opens a file only by its name as it is
 on disk, so the extension lists the folder and takes the name it finds there.
 
-Without any data the game starts and says that it is missing.
+Without any data the game says so on the screen, and closes when the button is chosen.
 
 ## Tests
 
@@ -222,7 +236,7 @@ ctest --test-dir build
 ```
 
 The tests make the bytes they read themselves. One that wants real data
-looks for it in `QUAKE_TEST_DATA_DIRECTORY`, by default the `id1` put
+looks for it in `QUAKE_TEST_DATA_DIRECTORY`, by default the `id1` of the first copy put
 under the assets, and skips itself when the file it wants is not there as
 a file of its own: the levels under `id1/maps` are, what is inside the
 archives is not. A checkout of LibreQuake has the rest loose, under `lq1`.

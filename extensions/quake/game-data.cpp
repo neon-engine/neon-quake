@@ -8,12 +8,14 @@
 
 namespace quake
 {
-  bool GameData::Load(const neon::extension::World &world, std::string &error)
+  bool GameData::Load(const neon::extension::World &world, const std::string &folder, std::string &error)
   {
+    _folder = folder;
+
     // The archives are opened by the name they have, which may be PAK0.PAK
     // as on Steam: the engine opens a file only by its name as it is on
     // disk, so the folder is listed and the name found in any case.
-    const std::vector<std::string> names = world.ListFiles(std::string(folder));
+    const std::vector<std::string> names = world.ListFiles(folder);
 
     // the archives are counted from 0, and the game stops at the first
     // number that is missing
@@ -24,7 +26,7 @@ namespace quake
       // tells case apart can, the original's is taken.
       const std::optional<std::string> name = FindAnyCaseName(names, "PAK" + std::to_string(number) + ".PAK");
       if (!name) { break; }
-      const std::string path = std::string(folder) + *name;
+      const std::string path = folder + *name;
 
       std::vector<std::uint8_t> bytes;
       if (!world.ReadFile(path, bytes))
@@ -48,7 +50,7 @@ namespace quake
 
     if (_paks.GetCount() == 0)
     {
-      error = "there is no " + std::string(folder) + "pak0.pak";
+      error = "there is no " + folder + "pak0.pak";
       return false;
     }
 
@@ -69,6 +71,11 @@ namespace quake
   std::vector<std::string> GameData::ListNames(const std::string_view folder_name) const
   {
     return _paks.ListNames(folder_name);
+  }
+
+  const std::string &GameData::GetFolder() const
+  {
+    return _folder;
   }
 
   const Palette &GameData::GetPalette() const

@@ -15,3 +15,8 @@ id1*/
 
 # the level a player chose to look at, on their own machine
 /assets/level.txt
+
+# The copies of the game's data a player puts under assets/basedirs/, each a
+# folder with an id1 in it, are theirs and never committed
+/assets/basedirs/*
+!/assets/basedirs/README.md

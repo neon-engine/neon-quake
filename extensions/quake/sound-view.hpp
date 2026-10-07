@@ -71,6 +71,9 @@ namespace quake
     neon::extension::Entity _music = 0;
     int _track = 0;
 
+    // the folder id1 of the data, where the music is, ending with a slash
+    std::string _data_folder;
+
     // how many entities were made to play a sound, which numbers them
     std::uint64_t _made = 0;
 
@@ -134,6 +137,10 @@ namespace quake
     /// on, next to its archives, in any letter case. The music before it
     /// ends. A track the data does not have, and the number 0, is silence.
     void PlayMusic(const neon::extension::World &world, int track);
+
+    /// Where the music is looked for: the folder `id1` the data was read
+    /// from, see GameData::GetFolder(). Without it there is no music.
+    void SetDataFolder(const std::string &folder);
 
     /// Sets how loud the sounds and the music are, each from 0 to 1: the
     /// volume of the groups of the engine the sounds of the game are in.
