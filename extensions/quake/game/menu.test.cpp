@@ -959,14 +959,24 @@ namespace
   TEST(MenuTest, ShowsTheButtonsThatChooseAndGoBackBelowAMenu)
   {
     // a picture, its word 4 pixels after it and in the middle of its
-    // height, and 16 pixels to the next. The Enter key is 32 pixels wide and
-    // high, and the Escape key 16: 152 pixels in the middle of 320, and the
-    // Enter key 8 pixels above the row so that its middle is the row's
+    // height, and 16 pixels to the next: 136 pixels in the middle of 320
     const Menu menu = make_menu_at(0);
-    std::vector<HudPicture> expected = {MakePicture("prompts/key-enter.png", 84, 144, center)};
+    std::vector<HudPicture> expected = {MakePicture("prompts/xbox-a.png", 92, 152, center)};
+    append(expected, make_bronze_letters("Select", 112, 156));
+    expected.push_back(MakePicture("prompts/xbox-b.png", 176, 152, center));
+    append(expected, make_bronze_letters("Back", 196, 156));
+    EXPECT_THAT(menu.LayoutHints(PromptDevice::Xbox), ElementsAreArray(expected));
+  }
+
+  TEST(MenuTest, NamesTheKeysOfTheKeyboardInLetters)
+  {
+    // the name of the key in white, a space, and the word in bronze, on
+    // the row of the words of the pictures: 176 pixels in the middle of 320
+    const Menu menu = make_menu_at(0);
+    std::vector<HudPicture> expected = MakeLetters("Enter", 72, 156, center);
     append(expected, make_bronze_letters("Select", 120, 156));
-    expected.push_back(MakePicture("prompts/key-escape.png", 184, 152, center));
-    append(expected, make_bronze_letters("Back", 204, 156));
+    append(expected, MakeLetters("Esc", 184, 156, center));
+    append(expected, make_bronze_letters("Back", 216, 156));
     EXPECT_THAT(menu.LayoutHints(PromptDevice::Keyboard), ElementsAreArray(expected));
   }
 
