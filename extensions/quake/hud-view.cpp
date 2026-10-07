@@ -33,7 +33,7 @@ namespace quake
     // image of the user interface reads as it is.
     if (name.starts_with("prompts/"))
     {
-      made.path = "extensions://quake/assets/" + std::string(name);
+      made.path = "assets://" + std::string(name);
       made.width = Prompts::size;
       made.height = Prompts::size;
       return made;

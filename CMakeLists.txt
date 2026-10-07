@@ -108,8 +108,8 @@ target_link_libraries(quake-extension PRIVATE quake-game)
 # The shaders of the game: its textures read pixel by pixel, its liquids that
 # swim, its sky. They are compiled here with glslang, the compiler the engine
 # compiles its own with, against the declarations the engine's shaders share,
-# and put next to the assets of the extension, where a material names one as
-# extensions://quake/assets/shaders/surface.
+# and put in the folder of the extension, which holds what it needs to run,
+# where a material names one as extensions://quake/shaders/surface.
 find_program(GLSLANG_EXECUTABLE NAMES glslang glslangValidator)
 if (NOT GLSLANG_EXECUTABLE)
   message(FATAL_ERROR
@@ -119,14 +119,14 @@ if (NOT GLSLANG_EXECUTABLE)
 endif ()
 
 set(QUAKE_SHADER_SOURCE_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/extensions/quake/shaders")
-set(QUAKE_SHADER_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/quake/extensions/quake/assets/shaders")
+set(QUAKE_SHADER_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/quake/extensions/quake/shaders")
 file(GLOB QUAKE_SHADER_SOURCES CONFIGURE_DEPENDS
         "${QUAKE_SHADER_SOURCE_DIRECTORY}/*.vert"
         "${QUAKE_SHADER_SOURCE_DIRECTORY}/*.frag"
 )
 file(GLOB QUAKE_SHADER_INCLUDES CONFIGURE_DEPENDS
         "${QUAKE_SHADER_SOURCE_DIRECTORY}/*.glsl"
-        "${NEON_ENGINE_DIRECTORY}/app/NeonRuntime/shaders/vulkan/*.glsl"
+        "${NEON_ENGINE_DIRECTORY}/app/NeonRuntime/engine/shaders/*.glsl"
 )
 
 set(QUAKE_SHADER_OUTPUTS)
@@ -138,7 +138,7 @@ foreach (SHADER_SOURCE IN LISTS QUAKE_SHADER_SOURCES)
           COMMAND ${CMAKE_COMMAND} -E make_directory "${QUAKE_SHADER_OUTPUT_DIRECTORY}"
           COMMAND "${GLSLANG_EXECUTABLE}" -V --quiet
           "-I${QUAKE_SHADER_SOURCE_DIRECTORY}"
-          "-I${NEON_ENGINE_DIRECTORY}/app/NeonRuntime/shaders/vulkan"
+          "-I${NEON_ENGINE_DIRECTORY}/app/NeonRuntime/engine/shaders"
           "${SHADER_SOURCE}" -o "${SHADER_OUTPUT}"
           DEPENDS "${SHADER_SOURCE}" ${QUAKE_SHADER_INCLUDES}
           COMMENT "Compiling the shader ${SHADER_NAME} of the game"
@@ -151,7 +151,7 @@ add_custom_target(quake-shaders ALL DEPENDS ${QUAKE_SHADER_OUTPUTS})
 add_dependencies(quake-extension quake-shaders)
 
 
-set(QUAKE_TEST_DATA_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/extensions/quake/assets/id1" CACHE PATH
+set(QUAKE_TEST_DATA_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/assets/id1" CACHE PATH
         "A folder of game data to test the formats with: the id1 put under the assets, or lq1 of a checkout of LibreQuake")
 
 # Tests of the formats and of the game. They need GoogleTest, which is taken from the engine's

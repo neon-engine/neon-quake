@@ -6,8 +6,8 @@ name: neon-quake
 organization: neon-engine
 
 scenes:
-  - extensions://quake/assets/scenes/start.scene.yml
+  - assets://scenes/start.scene.yml
 
-entry_scene: extensions://quake/assets/scenes/start.scene.yml
+entry_scene: assets://scenes/start.scene.yml
 
 input: assets://input/quake.input.yml

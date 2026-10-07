@@ -28,7 +28,7 @@ namespace quake
       _entity = world.CreateEntity("particles", parent);
       world.AddComponent(_entity, "Transform");
       world.AddComponent(_entity, "Renderable");
-      world.SetText(_entity, world.FindField("Renderable", "shader"), "assets://shaders/unlit");
+      world.SetText(_entity, world.FindField("Renderable", "shader"), "engine://shaders/unlit");
       // a particle is its colour and nothing else
       world.SetBoolean(_entity, world.FindField("Renderable", "material.use_textures"), false);
     }

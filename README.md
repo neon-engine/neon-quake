@@ -34,10 +34,15 @@ is kept in `user://quake.cfg`. Lights flicker, pulse, and are switched as the ga
 ## What it is made of
 
 ```
-assets/project.yml          the project: its name, and the scene it starts with
-assets/input/               the input map of the game: what the player does, and the keys for it
-assets/settings.yml         the settings of the game: its window, and no menu of the engine
-extensions/quake/
+assets/                     the game, assets://
+  project.yml               the project: its name, and the scene it starts with
+  input/                    the input map of the game: what the player does, and the keys for it
+  settings.yml              the settings of the game: its window, and no menu of the engine
+  scenes/                   the scene it starts with
+  ui/                       the status bar
+  prompts/                  the pictures of the buttons of gamepads
+  id1/                      the data of the game, which a player brings
+extensions/quake/           the extension, extensions://quake/: its code, and what it needs to run
   extension.yml             the recipe of the extension
   quake.cpp                 its code: what it brings to the engine
   game-data.hpp/.cpp        the archives of the game, and its palette
@@ -51,7 +56,6 @@ extensions/quake/
   shaders/                  the shaders of the game: pixels as they are, liquids, the sky
   formats/                  the formats of the game's data, read from bytes
   game/                     what the game does with its data, without the engine
-  assets/                   its scenes, and the data of the game under id1/, which a player brings
 tools/tour.py               pictures of everything a level shows, for checking by eye
 ```
 
@@ -154,11 +158,11 @@ build/quake/neon-quake
 |---|---|
 | `-DNEON_ENGINE_DIRECTORY=<folder>` | Where the engine is, when it is not `../neon-engine` |
 | `-DCMAKE_BUILD_TYPE=<kind>` | `Release` when nothing is said, which is the build for playing. `Debug` is not optimised, and is several times slower in what the game does every frame: use it with a debugger, not to judge how the game runs |
-| `-DNEON_RUNTIME_DIRECTORY=<folder>` | Which NeonRuntime the game is put together with, when it is not one of the engine's builds. A folder with `NeonRuntime` and its `assets` |
+| `-DNEON_RUNTIME_DIRECTORY=<folder>` | Which NeonRuntime the game is put together with, when it is not one of the engine's builds. A folder with `NeonRuntime` and its `engine` folder |
 
 The game is put together in `build/quake/`: the runtime, named `neon-quake`
-there, its assets with this project's `project.yml` on top, and
-`extensions/quake/`.
+there, with its folder `engine`, this project's `assets/`, and
+`extensions/quake/` with the library and the compiled shaders.
 
 ## Running it
 
@@ -172,12 +176,12 @@ without changing code, by a text file next to the data whose first line is
 the name of a level:
 
 ```sh
-echo maps/lq_e1m1.bsp > build/quake/extensions/quake/assets/level.txt
+echo maps/lq_e1m1.bsp > build/quake/assets/level.txt
 ```
 
-The extension reads it as `extensions://quake/assets/level.txt`. It is a
+The extension reads it as `assets://level.txt`. It is a
 choice of one's own machine and is never committed: Git leaves
-`extensions/quake/assets/level.txt` alone. When the data has no level of that
+`assets/level.txt` alone. When the data has no level of that
 name the game says so and shows the level it starts with; without the file
 it shows that level and says nothing.
 
@@ -188,13 +192,13 @@ are left out, as are faces painted `trigger`, `clip`, or `skip`.
 ## The data of the game
 
 The repository carries no data of any game. Whoever builds it puts an `id1`
-folder of their own under `extensions/quake/assets/id1/`: that of the
+folder of their own under `assets/id1/`: that of the
 original game, or of [LibreQuake](https://github.com/lavenderdotpet/LibreQuake),
 a free game made for this engine's kind. Git leaves the folder alone, and
-the build copies it, with the rest of `extensions/quake/assets/`, to where
+the build copies it, with the rest of `assets/`, to where
 the game is put together.
 
-The extension reads it as `extensions://quake/assets/id1/pak0.pak`,
+The extension reads it as `assets://id1/pak0.pak`,
 `pak1.pak`, and so on, each archive as the file it is, and takes it apart
 itself; the engine knows nothing of archives. The data is not ours and is
 never committed.
@@ -251,7 +255,7 @@ What that covers and what it does not:
 - **Not the data of a game.** `id1` is the player's own copy, of Quake or of
   LibreQuake, under the licence it came with, and is never part of this
   repository.
-- **The pictures of buttons** in `extensions/quake/assets/prompts/`, when
+- **The pictures of buttons** in `assets/prompts/`, when
   they are there, are by Kenney and in the public domain (CC0).
 
 ## Order of work

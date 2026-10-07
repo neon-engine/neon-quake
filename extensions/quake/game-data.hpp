@@ -26,9 +26,9 @@ namespace quake
     Palette _palette;
 
   public:
-    /// The folder the data is looked for in, under the assets of the
-    /// extension next to the runtime.
-    static constexpr std::string_view folder = "extensions://quake/assets/id1/";
+    /// The folder the data is looked for in, under the assets of the game
+    /// next to the runtime.
+    static constexpr std::string_view folder = "assets://id1/";
 
     /// Reads `pak0.pak`, `pak1.pak`, and so on, for as long as there is a
     /// next one, in any letter case (`PAK0.PAK` as on Steam), and the

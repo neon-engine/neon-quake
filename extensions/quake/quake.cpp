@@ -71,7 +71,7 @@ namespace quake
 
     /// A file the player may write to choose the level that is shown: its
     /// first line is the name of a level, such as `maps/lq_e1m1.bsp`.
-    static constexpr std::string_view level_file = "extensions://quake/assets/level.txt";
+    static constexpr std::string_view level_file = "assets://level.txt";
 
     /// The level the file `level.txt` asks for, in its first line, or
     /// nothing when there is no such file or it says nothing.

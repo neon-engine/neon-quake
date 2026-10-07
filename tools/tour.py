@@ -25,7 +25,7 @@ COLUMNS, ROWS = 4, 3
 
 def run(build, level, frames, extra, output):
     game = os.path.join(build, "quake")
-    with open(os.path.join(game, "extensions/quake/assets/level.txt"), "w") as chosen:
+    with open(os.path.join(game, "assets/level.txt"), "w") as chosen:
         chosen.write(level + "\n")
     try:
         command = [
@@ -36,7 +36,7 @@ def run(build, level, frames, extra, output):
             command, cwd=game, env=dict(os.environ, QUAKE_TOUR="1"), capture_output=True, text=True, timeout=600)
         return done.stdout + done.stderr
     finally:
-        os.remove(os.path.join(game, "extensions/quake/assets/level.txt"))
+        os.remove(os.path.join(game, "assets/level.txt"))
 
 
 def read_png(path):

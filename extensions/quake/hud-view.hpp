@@ -112,7 +112,7 @@ namespace quake
 
   public:
     /// The file of the user interface the pictures are shown in.
-    static constexpr const char *file = "extensions://quake/assets/ui/hud.ui.yml";
+    static constexpr const char *file = "assets://ui/hud.ui.yml";
 
     /// Shows a list of pictures. An empty list shows nothing.
     void Show(const neon::extension::World &world, const GameData &data, const std::vector<HudPicture> &pictures);
