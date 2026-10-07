@@ -18,7 +18,8 @@ What the game code plays is heard where it sounds: doors, items, monsters,
 the hum of a level. Monsters see the player, walk, and attack, and what
 falls comes to lie, all colliding with the level as the original does. The
 player holds a weapon, shoots with the left button of the mouse, and chooses
-a weapon with the number keys; what is shot dies. A player who is killed
+a weapon with the number keys or goes through them with the wheel; what is
+shot dies. A player who is killed
 lies where the player fell and starts the level again with the fire button,
 and the end of a level leads to the next, with what the player carries. What
 moves is shown on its way in every frame that is drawn, a monster from one

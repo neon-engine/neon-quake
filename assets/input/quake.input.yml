@@ -4,7 +4,9 @@
 # The first five are what the player of the engine walks, looks, and jumps
 # with. The rest is the game's own: the game code is told that `fire` is
 # down, and gets the number of a weapon, or the wish for the next or the one
-# before, as the player asks for it.
+# before, as the player asks for it. The wheel of the mouse goes through the
+# weapons as LibreQuake's own settings have it: up for the next, down for the
+# one before, a notch a weapon.
 #
 # `run` is held to walk: the player runs otherwise, as the game is played
 # today. `swim-up` and `swim-down` are for water; `jump` swims up as well.
@@ -17,8 +19,8 @@
 #
 # Everything can be done with a controller: the sticks walk and look, the
 # right trigger fires, the lower face button jumps, the shoulders swim up and
-# down, and the pad goes through the weapons with left and right. Up on the pad is the scores of the level,
-# which the game does not show yet. Down on the pad is free.
+# down, and the pad goes through the weapons with left and right. Up on the pad is the scores of the level.
+# Down on the pad is free.
 
 version: 1
 
@@ -65,10 +67,12 @@ actions:
   weapon-next:
     type: button
     keys: [e]
+    mouse: wheel-up
     buttons: [dpad-right]
   weapon-previous:
     type: button
     keys: [q]
+    mouse: wheel-down
     buttons: [dpad-left]
   scores:
     type: button
