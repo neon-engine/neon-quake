@@ -30,6 +30,11 @@ namespace quake
     static constexpr std::string_view select_key = "Enter";
     static constexpr std::string_view back_key = "Esc";
 
+    /// The keys of the keyboard that answer a question, as the hints name
+    /// them. Enter and Esc answer it too.
+    static constexpr std::string_view yes_key = "Y";
+    static constexpr std::string_view no_key = "N";
+
     /// What a press in the menus means with that in the hands: with a
     /// Switch controller, choosing and going back change places.
     [[nodiscard]] static constexpr MenuKey Pressed(const MenuKey key, const PromptDevice device)

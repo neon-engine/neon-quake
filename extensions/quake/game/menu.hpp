@@ -134,8 +134,9 @@ namespace quake
     /// above the middle. A host that knows the real size hands it in.
     /// The hints below a menu: the button that chooses and the button that
     /// goes back, as pictures of what the player holds or, on the keyboard,
-    /// the names of the keys, each with its word. Nothing while the menus are closed, and on the screens that
-    /// ask a question or show a page, which say their keys themselves.
+    /// the names of the keys, each with its word. Below a question they
+    /// answer yes and no, and the keyboard names Y and N. Nothing while the
+    /// menus are closed, and on the pages of help.
     [[nodiscard]] std::vector<HudPicture> LayoutHints(PromptDevice device) const;
 
     [[nodiscard]] static std::vector<HudPicture> LayoutPause(

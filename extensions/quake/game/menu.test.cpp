@@ -1015,14 +1015,13 @@ namespace
     }
   }
 
-  TEST(MenuTest, ShowsNoHintsWhereAScreenSaysItsKeysItselfOrTheMenusAreClosed)
+  TEST(MenuTest, ShowsNoHintsOnTheHelpOrWhileTheMenusAreClosed)
   {
     Menu closed;
     EXPECT_THAT(closed.LayoutHints(PromptDevice::Xbox), IsEmpty());
 
-    // help, and the question before the game is left
+    // the pages of help
     EXPECT_THAT(make_menu_in(2).LayoutHints(PromptDevice::Xbox), IsEmpty());
-    EXPECT_THAT(make_menu_in(3).LayoutHints(PromptDevice::Xbox), IsEmpty());
 
     // the options and the video settings have them
     EXPECT_FALSE(make_menu_in(1).LayoutHints(PromptDevice::Xbox).empty());
@@ -1140,10 +1139,38 @@ namespace
     expected.push_back(MakePicture("gfx/box_mr.lmp", 256, 108, center));
     expected.push_back(MakePicture("gfx/box_br.lmp", 256, 116, center));
 
+    // the question alone: the keys that answer it are in the hints
     append(expected, make_bronze_letters("Do you really want to", 72, 84));
     append(expected, make_bronze_letters("leave the game?", 96, 92));
-    append(expected, make_bronze_letters("Y leaves, N stays.", 88, 108));
     EXPECT_THAT(menu.Layout(0.0), ElementsAreArray(expected));
+  }
+
+  TEST(MenuTest, AnswersTheQuestionsWithTheButtonsOfWhatThePlayerHolds)
+  {
+    // Y and N on the keyboard, in the row of the other hints: "Y Leave"
+    // and "N Stay" are 56 and 48 pixels, 120 with the gap, in the middle
+    // of 320
+    const Menu quit = make_menu_in(3);
+    std::vector<HudPicture> expected = MakeLetters("Y", 100, 156, center);
+    append(expected, make_bronze_letters("Leave", 116, 156));
+    append(expected, MakeLetters("N", 172, 156, center));
+    append(expected, make_bronze_letters("Stay", 188, 156));
+    EXPECT_THAT(quit.LayoutHints(PromptDevice::Keyboard), ElementsAreArray(expected));
+
+    // the button that chooses leaves and the one that goes back stays
+    const std::vector<HudPicture> buttons = quit.LayoutHints(PromptDevice::Switch);
+    EXPECT_EQ(buttons.front().name, "prompts/switch-a.png");
+    EXPECT_EQ(buttons[6].name, "prompts/switch-b.png");
+
+    // a new game over the one that runs is asked about with yes and no
+    Menu new_game = make_menu_in(0);
+    new_game.Press(MenuKey::Select, {}, make_running_game());
+    ASSERT_EQ(new_game.GetScreen(), MenuScreen::NewGame);
+    expected = MakeLetters("Y", 116, 156, center);
+    append(expected, make_bronze_letters("Yes", 132, 156));
+    append(expected, MakeLetters("N", 172, 156, center));
+    append(expected, make_bronze_letters("No", 188, 156));
+    EXPECT_THAT(new_game.LayoutHints(PromptDevice::Keyboard), ElementsAreArray(expected));
   }
 
   TEST(MenuTest, QuitsOnYesAndGoesBackOnNo)

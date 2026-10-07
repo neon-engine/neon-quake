@@ -60,12 +60,11 @@ namespace quake
 
     /// What the box before the end of the program says, in lines of the
     /// 24 letters the box has room for. The original has eight texts of
-    /// its own and shows one by chance; this one is ours.
-    constexpr std::array<std::string_view, 4> quit_lines = {
+    /// its own and shows one by chance; this one is ours. The keys that
+    /// answer it are in the hints below.
+    constexpr std::array<std::string_view, 2> quit_lines = {
       " Do you really want to  ",
       "    leave the game?     ",
-      "                        ",
-      "   Y leaves, N stays.   ",
     };
 
     constexpr std::string_view new_game_question = "Are you sure you want to\nstart a new game?";
@@ -222,6 +221,59 @@ namespace quake
     MenuAction sound(const std::string_view name)
     {
       return {.kind = MenuActionKind::PlaySound, .name = name};
+    }
+
+    /// One button of the hints: the key of the keyboard that presses it,
+    /// and what it does.
+    struct Hint
+    {
+      std::string_view key;
+      std::string_view word;
+    };
+
+    /// The row of the hints below a screen: the button that chooses and the
+    /// button that goes back, each with its word, and a gap before the
+    /// next, in the middle from side to side. The button is a picture
+    /// twice as high as a letter, with the letters in the middle of it, or
+    /// on the keyboard the name of its key in white letters and a space.
+    std::vector<HudPicture> layout_hint_row(const PromptDevice device, const Hint select, const Hint back)
+    {
+      constexpr std::int32_t gap = 4;
+      constexpr std::int32_t between = 16;
+      constexpr std::int32_t row_y = 152;
+      constexpr std::int32_t letters_y = row_y + (Prompts::size - 8) / 2;
+
+      // the picture of the button, or the name of the key
+      const bool names_keys = device == PromptDevice::Keyboard;
+      const std::string_view select_button = names_keys ? select.key : Prompts::Select(device);
+      const std::string_view back_button = names_keys ? back.key : Prompts::Back(device);
+      const auto button_width = [&](const std::string_view button)
+      {
+        return names_keys ? static_cast<std::int32_t>(button.size() + 1) * 8 : Prompts::size + gap;
+      };
+      const auto width_of = [&](const std::string_view button, const std::string_view word)
+      {
+        return button_width(button) + static_cast<std::int32_t>(word.size()) * 8;
+      };
+
+      std::vector<HudPicture> pictures;
+      std::int32_t x =
+        (screen_width - (width_of(select_button, select.word) + between + width_of(back_button, back.word))) / 2;
+      const auto add = [&](const std::string_view button, const std::string_view word)
+      {
+        if (names_keys)
+        {
+          HudText::AddLine(pictures, button, x, letters_y, anchor);
+        } else
+        {
+          pictures.push_back({.name = button, .x = x, .y = row_y, .anchor = anchor});
+        }
+        add_bronze_line(pictures, word, x + button_width(button), letters_y);
+        x += width_of(button, word) + between;
+      };
+      add(select_button, select.word);
+      add(back_button, back.word);
+      return pictures;
     }
   }
 
@@ -698,6 +750,7 @@ namespace quake
     case MenuScreen::Quit:
       // over the main menu, which it came from
       AddMain(pictures, widths.main, _main_cursor, time);
+      // as tall as it was with its answers in it, so that it covers Quit
       AddTextBox(pictures, 56, 76, 24, 4);
       for (std::size_t i = 0; i < quit_lines.size(); i++)
       {
@@ -753,6 +806,12 @@ namespace quake
 
   std::vector<HudPicture> Menu::LayoutHints(const PromptDevice device) const
   {
+    // A question is answered with yes and no, which the button that
+    // chooses and the one that goes back are as well. The keyboard has
+    // keys of its own for them.
+    const Hint yes = {.key = Prompts::yes_key, .word = "Yes"};
+    const Hint no = {.key = Prompts::no_key, .word = "No"};
+
     switch (_screen)
     {
     case MenuScreen::Main:
@@ -761,53 +820,15 @@ namespace quake
     case MenuScreen::Save:
     case MenuScreen::Options:
     case MenuScreen::Video:
-      break;
+      return layout_hint_row(
+        device, {.key = Prompts::select_key, .word = "Select"}, {.key = Prompts::back_key, .word = "Back"});
+    case MenuScreen::NewGame:
+      return layout_hint_row(device, yes, no);
+    case MenuScreen::Quit:
+      return layout_hint_row(device, {.key = yes.key, .word = "Leave"}, {.key = no.key, .word = "Stay"});
     default:
       return {};
     }
-
-    // A button, its word, and a gap before the next, in a row that is in
-    // the middle from side to side. The button is a picture twice as high
-    // as a letter, with the letters in the middle of it, or on the
-    // keyboard the name of the key in white letters and a space.
-    constexpr std::string_view select_word = "Select";
-    constexpr std::string_view back_word = "Back";
-    constexpr std::int32_t gap = 4;
-    constexpr std::int32_t between = 16;
-    constexpr std::int32_t row_y = 152;
-    constexpr std::int32_t letters_y = row_y + (Prompts::size - 8) / 2;
-
-    // the picture of the button, or the name of the key
-    const bool names_keys = device == PromptDevice::Keyboard;
-    const std::string_view select_button = names_keys ? Prompts::select_key : Prompts::Select(device);
-    const std::string_view back_button = names_keys ? Prompts::back_key : Prompts::Back(device);
-    const auto button_width = [&](const std::string_view button)
-    {
-      return names_keys ? static_cast<std::int32_t>(button.size() + 1) * 8 : Prompts::size + gap;
-    };
-    const auto width_of = [&](const std::string_view button, const std::string_view word)
-    {
-      return button_width(button) + static_cast<std::int32_t>(word.size()) * 8;
-    };
-
-    std::vector<HudPicture> pictures;
-    std::int32_t x =
-      (screen_width - (width_of(select_button, select_word) + between + width_of(back_button, back_word))) / 2;
-    const auto add = [&](const std::string_view button, const std::string_view word)
-    {
-      if (names_keys)
-      {
-        HudText::AddLine(pictures, button, x, letters_y, anchor);
-      } else
-      {
-        pictures.push_back({.name = button, .x = x, .y = row_y, .anchor = anchor});
-      }
-      add_bronze_line(pictures, word, x + button_width(button), letters_y);
-      x += width_of(button, word) + between;
-    };
-    add(select_button, select_word);
-    add(back_button, back_word);
-    return pictures;
   }
 
   std::vector<HudPicture> Menu::LayoutPause(const std::int32_t width, const std::int32_t height)
