@@ -418,6 +418,12 @@ namespace quake
     // what the game code printed of a line that has not ended yet
     std::string _line;
 
+    // Whether the player is being let into the level. What the game code
+    // prints for the player then is not shown: the original sent nothing to
+    // a player who had not spawned yet, so no one saw "player entered the
+    // game" in a game alone.
+    bool _player_is_joining = false;
+
     // The camera of the player, and the entity under it that shows the
     // weapon in the player's hands.
     neon::extension::Entity _camera = 0;
@@ -578,6 +584,11 @@ namespace quake
     /// the lines the game code printed, the words in the middle of the
     /// screen, or the counts of a level that is over.
     void ShowHud();
+
+    /// Lets the player into the level that was just made, with the numbers
+    /// brought from the one before. What the game code prints meanwhile
+    /// goes to the log only.
+    void ConnectPlayer();
 
     /// Puts the camera of the scene where the player looks from, `blend`
     /// of the way between the last two steps, looking where the player

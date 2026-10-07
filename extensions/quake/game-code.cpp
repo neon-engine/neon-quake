@@ -381,8 +381,8 @@ namespace quake
     {
       _world->Info(plain);
 
-      // and the player reads it on the screen for a while
-      if (_level != nullptr)
+      // and the player reads it on the screen for a while, once in
+      if (_level != nullptr && !_player_is_joining)
       {
         _messages.push_back({plain, _level->running.GetTime()});
         if (_messages.size() > most_messages) { _messages.erase(_messages.begin()); }
@@ -400,11 +400,19 @@ namespace quake
   {
     // what is shown in the middle of the screen is whole, and ends with none
     if (const std::string plain = to_plain(text); !plain.empty()) { _world->Info(plain); }
+    if (_player_is_joining) { return; }
 
     // the lines of it are kept as they are, for the screen
     _center_text.clear();
     for (const char letter : text) { _center_text += static_cast<char>(static_cast<unsigned char>(letter) & 0x7fu); }
     _center_at = _level != nullptr ? _level->running.GetTime() : 0.0;
+  }
+
+  void GameCode::ConnectPlayer()
+  {
+    _player_is_joining = true;
+    _level->running.ConnectClient(player_entity, "player", _start_parms);
+    _player_is_joining = false;
   }
 
   void GameCode::Error(const std::int32_t self, const std::string_view text)
@@ -1998,7 +2006,7 @@ namespace quake
     // goes back to a saved game does not: that player is in the saved game.
     if (_loading == nullptr)
     {
-      _level->running.ConnectClient(player_entity, "player", _start_parms);
+      ConnectPlayer();
       for (std::size_t parm = 0; parm < _came_with.size(); parm++)
       {
         _came_with[parm] = _level->globals.parms[parm].Get(_level->machine);
@@ -2030,7 +2038,7 @@ namespace quake
       if (std::string problem; !SavedGameCapture::Restore(*game, _level->machine, problem))
       {
         world.Error("The saved game cannot be gone back to, and its level starts anew: " + problem);
-        _level->running.ConnectClient(player_entity, "player", _start_parms);
+        ConnectPlayer();
       } else
       {
         for (std::int32_t entity = 0; entity < _level->machine.GetEntityCount(); entity++)
