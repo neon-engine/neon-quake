@@ -27,19 +27,9 @@ namespace quake
     /// one would leave the screen.
     static constexpr std::size_t longest_name = 40;
 
-    /// Where the board is when the player asks for it while playing: in
-    /// the middle of the screen, over the view, with the status bar left
-    /// as it is below.
-    static constexpr std::int32_t middle_top = 88;
-
-    /// What to draw, in order. As the original has it, in place of the
-    /// status bar at the lower edge, which is where a player who is dead
-    /// sees it; or anywhere else, with another anchor and the row its
-    /// upper edge is at.
-    [[nodiscard]] static std::vector<HudPicture> Layout(
-      const PlayerStats &stats,
-      HudAnchor anchor = HudAnchor::Bottom,
-      std::int32_t top = 176);
+    /// What to draw, in order: in place of the status bar at the lower
+    /// edge, as the original has it.
+    [[nodiscard]] static std::vector<HudPicture> Layout(const PlayerStats &stats);
   };
 } // quake
 

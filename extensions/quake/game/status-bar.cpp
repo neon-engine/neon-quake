@@ -210,9 +210,9 @@ namespace quake
     std::vector<HudPicture> pictures;
     if (options.size == StatusBarSize::Full) { AddInventory(pictures, stats, time); }
 
-    // A player who is dead sees the counts of the level in place of the
-    // status bar, as in the original.
-    if (stats.health <= 0)
+    // A player who asks for the counts of the level, or who is dead, sees
+    // them in place of the status bar, as in the original.
+    if (options.shows_scores || stats.health <= 0)
     {
       const std::vector<HudPicture> scores = Scoreboard::Layout(stats);
       pictures.insert(pictures.end(), scores.begin(), scores.end());
@@ -220,15 +220,6 @@ namespace quake
     }
 
     if (options.size != StatusBarSize::None) { AddBar(pictures, stats, time); }
-
-    // One who asks for them while playing sees them in the middle of the
-    // screen, and keeps the status bar. The original put them over it.
-    if (options.shows_scores)
-    {
-      const std::vector<HudPicture> scores = Scoreboard::Layout(stats, HudAnchor::Center, Scoreboard::middle_top);
-      pictures.insert(pictures.end(), scores.begin(), scores.end());
-    }
-
     return pictures;
   }
 } // quake

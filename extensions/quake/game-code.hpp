@@ -19,6 +19,7 @@
 #include "game-data.hpp"
 #include "hud-view.hpp"
 #include "game/frame-limit-delay.hpp"
+#include "game/held-button.hpp"
 #include "game/level-collision.hpp"
 #include "game/level-physics.hpp"
 #include "game/level-running.hpp"
@@ -143,8 +144,10 @@ namespace quake
     std::unique_ptr<Level> _level;
     std::vector<Shown> _shown;
 
-    // What is shown on top of the world: the status bar, and what draws it.
+    // What is shown on top of the world: the status bar, whether the key
+    // for the scores is held, and what draws it.
     StatusBar _status_bar;
+    HeldButton _scores_key;
     HudView _hud;
 
     // The menu of the game, what it sets, and whether the mouse looks the

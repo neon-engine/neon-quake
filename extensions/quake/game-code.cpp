@@ -1203,7 +1203,7 @@ namespace quake
       _completed_time = -1.0f;
 
       StatusBarOptions options;
-      options.shows_scores = _world->IsActionDown("scores");
+      options.shows_scores = _scores_key.Update(_world->IsActionDown("scores"), _frame_time);
       options.size = StatusBarOptions::SizeOfViewSize(_options.screen_size);
       pictures = _status_bar.Layout(stats, time, options);
 

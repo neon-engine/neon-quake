@@ -11,8 +11,12 @@
 
 namespace quake
 {
-  std::vector<HudPicture> Scoreboard::Layout(const PlayerStats &stats, const HudAnchor anchor, const std::int32_t top)
+  std::vector<HudPicture> Scoreboard::Layout(const PlayerStats &stats)
   {
+    // the row of the status bar, which the board takes the place of
+    constexpr HudAnchor anchor = HudAnchor::Bottom;
+    constexpr std::int32_t top = 176;
+
     std::vector<HudPicture> pictures;
     pictures.push_back({.name = "scorebar", .x = 0, .y = top, .anchor = anchor, .opacity = StatusBar::background_opacity});
 
