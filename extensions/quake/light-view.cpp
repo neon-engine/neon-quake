@@ -29,8 +29,15 @@ namespace quake
     }
     if (light == nullptr && _lights.size() < most)
     {
+      // the lowest bit no light has
+      std::uint32_t taken = 0;
+      for (const Light &known : _lights) { taken |= 1u << known.bit; }
+      std::uint32_t bit = 0;
+      while (bit < most && (taken & (1u << bit)) != 0) { bit++; }
+
       _lights.emplace_back();
       light = &_lights.back();
+      light->bit = bit;
     }
     if (light == nullptr) { light = &_lights.front(); }
 
@@ -81,6 +88,9 @@ namespace quake
         world.SetText(light.entity, world.FindField("Light", "type"), "point");
         world.SetVector3(light.entity, world.FindField("Light", "diffuse"), {1.0f, 1.0f, 1.0f});
         world.SetBoolean(light.entity, world.FindField("Light", "casts_shadows"), false);
+        // its bit, which the shaders read as the light's `linear`
+        world.SetNumber(light.entity, world.FindField("Light", "linear"), light.bit);
+        world.SetNumber(light.entity, world.FindField("Light", "quadratic"), 0.0);
         light.has_changed = true;
       }
       if (!light.has_changed) { continue; }
@@ -104,6 +114,17 @@ namespace quake
       sum += std::max(light.radius - std::sqrt(x * x + y * y + z * z), 0.0f);
     }
     return sum;
+  }
+
+  std::vector<BspMomentLight> LightView::GetLights() const
+  {
+    std::vector<BspMomentLight> lights;
+    lights.reserve(_lights.size());
+    for (const Light &light : _lights)
+    {
+      lights.push_back({{light.place[0], light.place[1], light.place[2]}, light.radius, light.bit});
+    }
+    return lights;
   }
 
   void LightView::Forget()

@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -15,6 +16,8 @@
 
 #include "formats/bsp-file.hpp"
 #include "formats/bsp-light-point.hpp"
+#include "formats/bsp-light-visibility.hpp"
+#include "formats/bsp-moment-light.hpp"
 #include "formats/entity-text.hpp"
 #include "formats/light-styles.hpp"
 #include "formats/lightmap-atlas.hpp"
@@ -48,6 +51,25 @@ namespace quake
     bool _has_lit = false;
     BspLightPoint _light;
     bool _has_light = false;
+
+    // Which faces of the level a light of a moment reaches: those of the
+    // rooms it sees into. The masks are those of the lights as they were
+    // last told, one for each face of the level, so that they are told
+    // again only when they change.
+    BspLightVisibility _visibility;
+    bool _has_visibility = false;
+    std::vector<std::uint32_t> _masks;
+
+    // room for the masks of a frame, and whether a light was there in the
+    // last, so that the masks are worked out once more when it went out
+    std::vector<std::uint32_t> _marks;
+    bool _has_marks = false;
+
+    /// How many faces of a level can be numbered in the alpha of a corner:
+    /// the number is a float, which holds 24 bits, 8 of them the fourth
+    /// style. A face beyond is of no face to the shaders, and every light
+    /// of a moment reaches it.
+    static constexpr std::size_t most_numbered_faces = 65535;
 
     // What the level says of itself that is for drawing it: how thick its
     // fog is and its colour, as a screen is given it, and how much of each
@@ -90,9 +112,9 @@ namespace quake
 
       neon::extension::Entity entity = 0;
 
-      /// Whether its light changes too, so that its second texture is the
-      /// table of the styles, see styles.glsl.
-      bool is_styled = false;
+      /// Whether its second texture is the table of the light, see
+      /// light-table.glsl: it is of the level itself, or its light changes.
+      bool uses_table = false;
 
       /// The pictures it shows in turn, and those it shows while the frame
       /// of its model is not 0.
@@ -110,18 +132,24 @@ namespace quake
     LightStyles::Values _style_values{};
     bool _has_style_values = false;
 
-    // The picture that tells the shaders what each style is worth, once it
-    // was handed over: the path a material names it by. It is the same for
-    // every level.
-    static constexpr std::string_view style_table_name = "light-styles";
-    std::string _style_table;
+    // The picture that tells the shaders what each style is worth and
+    // which lights of a moment reach each face of the level, see
+    // light-table.glsl, once it was handed over: the path a material names
+    // it by. It is one for each level, named after it, as it is as high as
+    // the level has faces: a picture with the renderer keeps its size.
+    static constexpr std::string_view light_table_name = "light-table";
+    static constexpr std::uint32_t light_table_width = 64;
+    std::string _light_table;
+    std::uint32_t _light_table_height = 1;
 
     /// The path of that picture, handing it over when it was not yet.
-    const std::string &FindStyleTable(const neon::extension::World &world);
+    const std::string &FindLightTable(const neon::extension::World &world);
 
-    /// Its pixels: what each style is worth in 256ths, the low byte in red
-    /// and the high byte in green, see styles.glsl.
-    [[nodiscard]] std::vector<std::uint8_t> WriteStyleTable() const;
+    /// Its pixels: the first row what each style is worth in 256ths, the
+    /// low byte in red and the high byte in green; the rows below the mask
+    /// of each face, 64 to a row, its low byte in red up to its high byte
+    /// in alpha, see light-table.glsl.
+    [[nodiscard]] std::vector<std::uint8_t> WriteLightTable() const;
 
     // the entity everything of the level that is shown stands under
     neon::extension::Entity _root = 0;
@@ -225,11 +253,13 @@ namespace quake
     void SetLightStyle(std::int32_t style, std::string_view text);
 
     /// Makes the light of the level what its styles make it at a time of
-    /// the game, in seconds. When a style is worth something else, the
-    /// renderer is told what each is worth, a picture of 64 pixels, and
-    /// nothing else: the lightmaps of the faces whose light changes are
+    /// the game, in seconds, and has the lights of the moment, `lights`,
+    /// reach the faces of the rooms they see into and no others. When a
+    /// style is worth something else, or a light reaches other faces, the
+    /// renderer is told the table of the light anew, see light-table.glsl,
+    /// and nothing else: the lightmaps of the faces whose light changes are
     /// there already, apart, and their shaders sum them, see styles.glsl.
-    void UpdateLight(const neon::extension::World &world, double time);
+    void UpdateLight(const neon::extension::World &world, double time, std::span<const BspMomentLight> lights = {});
 
     /// Says which frame the game code set for a model of the level, by its
     /// number: with a frame that is not 0 the model shows the second run of

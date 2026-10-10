@@ -41,17 +41,26 @@ vec3 sky_in_fog(vec3 shown)
 
 // The light of what flashes and burns for a moment: an explosion, the shot
 // of a gun, a rocket on its way. The game makes a point light of the engine
-// for each, with its colour as `diffuse` and, as `constant`, how far it
-// reaches in metres. As in the original the light falls off evenly to
-// nothing at that distance, and a wall 64 units inside of it is lit as
-// bright as a texture is. What comes out is added to the light of a level
-// as the level keeps it: 1 for twice as bright as the texture.
-vec3 light_of_the_moment(vec3 at)
+// for each, with its color as `diffuse`, as `constant` how far it reaches
+// in meters, and as `linear` its bit, from 0 to 31. As in the original the
+// light falls off evenly to nothing at that distance, and a wall 64 units
+// inside of it is lit as bright as a texture is. What comes out is added to
+// the light of a level as the level keeps it: 1 for twice as bright as the
+// texture.
+//
+// A wall stops no such light, so `lights` says which reach the face that
+// is drawn, a bit for each: those of the rooms the light sees into, see
+// light-table.glsl. A light whose bit is not set is left out, and no
+// fireball lights the room beyond a wall.
+vec3 light_of_the_moment(vec3 at, uint lights)
 {
     vec3 sum = vec3(0.0);
     int count = min(scene.light_counts.x, MAX_POINT_LIGHTS);
     for (int i = 0; i < count; i++)
     {
+        uint bit = uint(clamp(scene.point_lights[i].attenuation.y + 0.5, 0.0, 31.0));
+        if ((lights & (1u << bit)) == 0u) { continue; }
+
         float left = scene.point_lights[i].attenuation.x - distance(at, scene.point_lights[i].position.xyz);
         if (left > 0.0) { sum += scene.point_lights[i].diffuse.rgb * left; }
     }

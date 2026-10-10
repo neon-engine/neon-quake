@@ -8,6 +8,7 @@ layout (location = 1) in vec4 vertex_color;
 layout (location = 2) flat in uint object_index;
 layout (location = 3) in vec2 lightmap_coord;
 layout (location = 4) in vec3 world_position;
+layout (location = 5) flat in int light_code;
 
 layout (location = 0) out vec4 frag_color;
 
@@ -19,4 +20,5 @@ layout (set = 0, binding = 4) uniform texture2D glow_texture;
 layout (set = 0, binding = 7) uniform sampler glow_sampler;
 
 #include "lightmap.glsl"
+#include "light-table.glsl"
 #include "quake.glsl"

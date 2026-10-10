@@ -17,12 +17,19 @@ layout (location = 3) out vec2 lightmap_coord;
 // where the corner is in the world, for what is drawn by where it is seen
 // from: the sky
 layout (location = 4) out vec3 world_position;
+// which face of the level the corner is of, and its fourth style, as the
+// alpha of the corner carries them, see light-table.glsl: the same for
+// every corner of a face, so the first corner's is taken as it is
+layout (location = 5) flat out int light_code;
 
 void main()
 {
     object_index = gl_InstanceIndex;
     tex_coord = attr_tex_coords * object.texture_scale.xy;
-    vertex_color = attr_color;
+    // the alpha of a corner of the level says of which face it is; what
+    // is drawn with it is as see-through as it is at most
+    vertex_color = vec4(attr_color.rgb, min(attr_color.a, 1.0));
+    light_code = int(attr_color.a + 0.5);
     lightmap_coord = attr_lightmap_coords;
 
     vec4 in_world = object.model * vec4(attr_pos_coords, 1.0);

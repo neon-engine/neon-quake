@@ -8,6 +8,8 @@
 
 #include <neon/extension/neon-extension.hpp>
 
+#include "formats/bsp-moment-light.hpp"
+
 namespace quake
 {
   /// The lights of a moment: an explosion that lights a room and fades, the
@@ -20,6 +22,11 @@ namespace quake
   /// most 32 at once, each known by a key: the number of the entity it
   /// belongs to, so that an entity has one light and moves it along, or 0
   /// for a light of its own.
+  ///
+  /// Each has a bit of its own as well, from 0 to 31, which the engine is
+  /// told as the light's `linear`: a face of the level carries a mask of
+  /// the lights that reach it, see BspLightVisibility, and the shaders
+  /// leave out a light whose bit the mask has not.
   class LightView
   {
     /// One light, in the units and axes of the game.
@@ -27,6 +34,7 @@ namespace quake
     {
       neon::extension::Entity entity = 0;
       std::int32_t key = 0;
+      std::uint32_t bit = 0;
       std::array<float, 3> place{};
 
       /// How far it reaches, and how much of that it loses in a second.
@@ -72,6 +80,11 @@ namespace quake
     /// in the numbers the light of a level is counted in for a model: what
     /// is left of the reach of each.
     [[nodiscard]] float FindLight(const std::array<float, 3> &place) const;
+
+    /// The lights as they are, for the masks of the faces of the level:
+    /// where each is, in the units of the game, how far it reaches, and
+    /// its bit.
+    [[nodiscard]] std::vector<BspMomentLight> GetLights() const;
 
     /// Forgets every light, when the level they stand in goes: their
     /// entities went with it.

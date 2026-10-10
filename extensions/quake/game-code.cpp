@@ -2183,10 +2183,11 @@ namespace quake
     UpdateBeams();
 
     // the lights of the level flicker and are switched with its time, its
-    // textures change, and what flashes lights what is near
-    _view->UpdateLight(world, _level->running.GetTime());
-    _view->UpdateTextures(world, _level->running.GetTime());
+    // textures change, and what flashes lights what is near, in the rooms
+    // it sees into
     ShowLights();
+    _view->UpdateLight(world, _level->running.GetTime(), _lights.GetLights());
+    _view->UpdateTextures(world, _level->running.GetTime());
     for (std::int32_t entity = 1; entity < _level->machine.GetEntityCount(); entity++) { Show(entity); }
     _sounds->Update(world);
     SayFailures();

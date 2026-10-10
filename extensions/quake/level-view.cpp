@@ -335,6 +335,13 @@ namespace quake
         // with the shaders that work it out
         const bool is_styled = part_is_lit && !is_item && page < atlas.changing_pages;
 
+        // The faces of the level itself carry which lights of a moment
+        // reach them, and read the table of the light for it, as those
+        // whose light changes read it for their styles. A door or a lift
+        // lies in no room of the level, and every light reaches it.
+        const bool uses_masks = part_is_lit && !is_item && model == 0 && _has_visibility;
+        const bool uses_table = is_styled || uses_masks;
+
         // The corners the group uses, handed over once each. A corner belongs
         // to one face and a face to one texture, so the groups share none.
         std::vector<Vertex> corners;
@@ -355,16 +362,27 @@ namespace quake
             const BspVector normal = QuakeSpace::ToEngineDirection(from.normal);
 
             // The colour of a corner is white. Of a face whose light
-            // changes it is the styles of its lightmaps instead, each over
-            // 255, which is what its shader reads them from.
+            // changes it is the first three styles of its lightmaps
+            // instead, each over 255, which is what its shader reads them
+            // from. The alpha is the number of the corner, see
+            // light-table.glsl: the face of the level it is of, plus one,
+            // times 256, and the fourth style, 255 for none. A corner of
+            // a face too far up the level for the number, of a model that
+            // moves, or of an item is of no face, 0, which every light of
+            // a moment reaches.
             NeonColor colour{1.0f, 1.0f, 1.0f, 1.0f};
+            std::uint8_t fourth_style = BspFace::no_style;
             if (is_styled)
             {
               const std::array<std::uint8_t, 4> &styles = atlas.blocks[face_of[index]].styles;
-              colour = {
-                static_cast<float>(styles[0]) / 255.0f, static_cast<float>(styles[1]) / 255.0f,
-                static_cast<float>(styles[2]) / 255.0f, static_cast<float>(styles[3]) / 255.0f};
+              colour.r = static_cast<float>(styles[0]) / 255.0f;
+              colour.g = static_cast<float>(styles[1]) / 255.0f;
+              colour.b = static_cast<float>(styles[2]) / 255.0f;
+              fourth_style = styles[3];
             }
+            std::uint32_t face_number = 0;
+            if (uses_masks && face_of[index] < most_numbered_faces) { face_number = face_of[index] + 1; }
+            colour.a = static_cast<float>(face_number * 256 + fourth_style);
 
             place_of[index] = static_cast<std::uint32_t>(corners.size());
             corners.push_back({
@@ -421,7 +439,7 @@ namespace quake
           ChangingTexture changing;
           changing.model = model;
           changing.entity = entity;
-          changing.is_styled = is_styled;
+          changing.uses_table = uses_table;
           for (const std::int32_t frame : run.frames) { changing.frames.push_back(make(frame)); }
           for (const std::int32_t frame : run.alternate) { changing.alternate.push_back(make(frame)); }
 
@@ -440,10 +458,10 @@ namespace quake
           }
         }
 
-        // what the styles are worth, as the second texture, see styles.glsl
-        if (is_styled && !shown_texture.empty())
+        // the table of the light as the second texture, see light-table.glsl
+        if (uses_table && !shown_texture.empty())
         {
-          world.SetTexts(entity, textures_field, {shown_texture, FindStyleTable(world)});
+          world.SetTexts(entity, textures_field, {shown_texture, FindLightTable(world)});
         }
 
         // A liquid is seen through as much as the level says: its colour is
@@ -508,6 +526,12 @@ namespace quake
     _has_start = false;
     _player_placed = false;
     _has_lit = false;
+    _has_visibility = false;
+    _masks.clear();
+    _marks.clear();
+    _has_marks = false;
+    _light_table.clear();
+    _light_table_height = 1;
     _has_light = false;
     _changing_textures.clear();
     _part_frames.clear();
@@ -599,16 +623,22 @@ namespace quake
     if (style >= 0) { _styles.Set(static_cast<std::size_t>(style), text); }
   }
 
-  const std::string &LevelView::FindStyleTable(const World &world)
+  const std::string &LevelView::FindLightTable(const World &world)
   {
-    if (_style_table.empty()) { _style_table = world.SetImage(std::string(style_table_name), LightStyles::count, 1, WriteStyleTable()); }
-    return _style_table;
+    if (_light_table.empty())
+    {
+      _light_table = world.SetImage(
+        std::string(light_table_name) + "/" + _map, light_table_width, _light_table_height, WriteLightTable());
+    }
+    return _light_table;
   }
 
-  std::vector<std::uint8_t> LevelView::WriteStyleTable() const
+  std::vector<std::uint8_t> LevelView::WriteLightTable() const
   {
+    std::vector<std::uint8_t> table(static_cast<std::size_t>(light_table_width) * _light_table_height * 4, 0);
+
     // a style is worth 1 until the game has said otherwise
-    std::vector<std::uint8_t> table(LightStyles::count * 4, 0);
+    static_assert(LightStyles::count <= light_table_width);
     for (std::size_t style = 0; style < LightStyles::count; style++)
     {
       const float value = _has_style_values ? _style_values[style] : 1.0f;
@@ -621,20 +651,47 @@ namespace quake
       table[style * 4 + 1] = static_cast<std::uint8_t>(worth >> 8);
       table[style * 4 + 3] = 255;
     }
+
+    // the masks of the faces, from the second row on
+    for (std::size_t face = 0; face < _masks.size() && face < most_numbered_faces; face++)
+    {
+      const std::size_t at = (light_table_width + face) * 4;
+      if (at + 4 > table.size()) { break; }
+      table[at] = static_cast<std::uint8_t>(_masks[face] & 255);
+      table[at + 1] = static_cast<std::uint8_t>((_masks[face] >> 8) & 255);
+      table[at + 2] = static_cast<std::uint8_t>((_masks[face] >> 16) & 255);
+      table[at + 3] = static_cast<std::uint8_t>(_masks[face] >> 24);
+    }
     return table;
   }
 
-  void LevelView::UpdateLight(const World &world, const double time)
+  void LevelView::UpdateLight(const World &world, const double time, const std::span<const BspMomentLight> lights)
   {
     const LightStyles::Values values = _styles.GetValues(time);
-    if (_has_style_values && values == _style_values) { return; }
+    const bool styles_changed = !_has_style_values || values != _style_values;
     _style_values = values;
     _has_style_values = true;
 
-    // All that goes to the renderer when a light ticks: what each style is
-    // worth now, 64 pixels. The lightmaps are there already, and the
-    // shaders of the faces whose light changes sum them with these.
-    if (!_style_table.empty()) { (void) world.SetImage(std::string(style_table_name), LightStyles::count, 1, WriteStyleTable()); }
+    // which faces the lights of the moment reach now, when there are any
+    // or there were
+    bool masks_changed = false;
+    if (_has_visibility && (!lights.empty() || _has_marks))
+    {
+      _visibility.Mark(lights, _marks);
+      masks_changed = _marks != _masks;
+      if (masks_changed) { std::swap(_marks, _masks); }
+      _has_marks = !lights.empty();
+    }
+    if (!styles_changed && !masks_changed) { return; }
+
+    // All that goes to the renderer when a light ticks or one of a moment
+    // moves: the table of the light. The lightmaps are there already, and
+    // the shaders of the faces sum them with what it says.
+    if (!_light_table.empty())
+    {
+      (void) world.SetImage(
+        std::string(light_table_name) + "/" + _map, light_table_width, _light_table_height, WriteLightTable());
+    }
   }
 
   void LevelView::SetPartFrame(const std::size_t model, const std::int32_t frame)
@@ -663,7 +720,7 @@ namespace quake
       const Frame &shown = run[index];
       if (shown.path.empty()) { continue; }
 
-      if (changing.is_styled) { world.SetTexts(changing.entity, textures_field, {shown.path, FindStyleTable(world)}); }
+      if (changing.uses_table) { world.SetTexts(changing.entity, textures_field, {shown.path, FindLightTable(world)}); }
       else { world.SetTexts(changing.entity, textures_field, {shown.path}); }
 
       // one that does not glow takes away the glow of the one before
@@ -761,6 +818,18 @@ namespace quake
     {
       _has_light = true;
     }
+
+    // which faces a light of a moment reaches, and the table that tells the
+    // shaders, which is as high as the level has faces
+    if (std::string problem; !_visibility.Build(level, problem))
+    {
+      world.Warn("The lights of a moment in " + map + " shine through its walls: " + problem);
+    } else
+    {
+      _has_visibility = true;
+    }
+    const std::size_t numbered = std::min(level.faces.size(), most_numbered_faces);
+    _light_table_height = 1 + static_cast<std::uint32_t>((numbered + light_table_width - 1) / light_table_width);
 
     const Entity root = world.CreateEntity("level");
     world.AddComponent(root, "Transform");

@@ -19,7 +19,7 @@ void main()
         // The light of a moment is added as the original adds it, to the
         // numbers a screen is given: so the light of the level is taken
         // back to those, and the sum to light again.
-        vec3 more = light_of_the_moment(world_position);
+        vec3 more = light_of_the_moment(world_position, lights_of(light_code));
         if (more != vec3(0.0))
         {
             vec3 kept = pow(light / object.lightmap.x, vec3(1.0 / 2.2));
