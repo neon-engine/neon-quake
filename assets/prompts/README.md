@@ -1,6 +1,6 @@
 # Pictures of buttons
 
-The pictures in this folder are from **Input Prompts Pixel 16×** (1.0) by
+The pictures in this folder are from **Input Prompts Pixel 16x** (1.0) by
 Kenney, www.kenney.nl, which is in the public domain: Creative Commons Zero,
 http://creativecommons.org/publicdomain/zero/1.0/. Each is one tile of the
 pack, 16 by 16 pixels, as it is, or several of them laid over or next to
